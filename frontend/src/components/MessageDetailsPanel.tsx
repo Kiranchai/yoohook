@@ -59,7 +59,10 @@ const MessageDetailsPanel: React.FC = () => {
   };
 
   return (
-    <ResizablePanel defaultSize={80} className="p-8 ">
+    <ResizablePanel
+      defaultSize={80}
+      className="p-8 max-h-[calc(100vh-6rem)] h-full !overflow-auto"
+    >
       <div className="flex gap-4 items-center mb-12 ">
         <div
           style={{ backgroundColor: methodColors[message?.method] }}
@@ -67,7 +70,9 @@ const MessageDetailsPanel: React.FC = () => {
         >
           {message.method}
         </div>
-        <h1 className="font-bold text-2xl">/{message.path}</h1>
+        <h1 className="font-bold text-2xl truncate text-ellipsis overflow-hidden whitespace-nowrap max-w-[70rem]">
+          /{message.path}
+        </h1>
         <span className="opacity-50">ID: {message.id}</span>
       </div>
       <div className="flex flex-col gap-4 h-full">

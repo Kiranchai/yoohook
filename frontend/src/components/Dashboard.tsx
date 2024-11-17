@@ -8,7 +8,7 @@ import MessageDetailsPanel from "./MessageDetailsPanel";
 export default function Dashboard({ children }: { children: React.ReactNode }) {
   return (
     <ResizablePanelGroup
-      className="min-h-[calc(100vh-6rem)] relative"
+      className="max-h-[calc(100vh-6rem)] relative"
       direction="horizontal"
     >
       {children}

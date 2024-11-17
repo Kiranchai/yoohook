@@ -20,6 +20,8 @@ import logo from "@/assets/logo.png";
 import Lottie from "react-lottie";
 import animationData from "./lotties/listening.json";
 import { useMessages } from "./providers/MessagesProvider";
+import { GiPerspectiveDiceSixFacesRandom } from "react-icons/gi";
+import CustomResponsesDialog from "./components/CustomResponsesDialog";
 
 function App() {
   const { webhookId, messageId } = useParams();
@@ -52,13 +54,11 @@ function App() {
 
   const handleCopyToClipboard = () => {
     navigator.clipboard.writeText(
-      `http://${import.meta.env.VITE_SERVER_URL}/${generatedWebhookId}/`
+      `${import.meta.env.VITE_SERVER_URL}/${generatedWebhookId}`
     );
 
     toast("Copied to clipboard", {
-      description: `http://${
-        import.meta.env.VITE_SERVER_URL
-      }/${generatedWebhookId}/`,
+      description: `${import.meta.env.VITE_SERVER_URL}/${generatedWebhookId}`,
       style: {
         background: "#181818",
       },
@@ -82,12 +82,14 @@ function App() {
             className="bg-primary px-3 py-2 rounded-sm flex items-center gap-2 hover:bg-[#454b53] cursor-pointer transition-colors duration-150"
             onClick={handleCopyToClipboard}
           >
-            https://{import.meta.env.VITE_SERVER_URL}/{generatedWebhookId}/
+            {import.meta.env.VITE_SERVER_URL}/{generatedWebhookId}
             <FaRegCopy />
           </span>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="outline">Generate new webhook</Button>
+              <Button variant="outline" className="flex items-center">
+                Generate new webhook <GiPerspectiveDiceSixFacesRandom />
+              </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
@@ -105,6 +107,7 @@ function App() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+          <CustomResponsesDialog />
         </div>
       </nav>
 

@@ -53,9 +53,7 @@ export default function WebhookMessagesPanel() {
 
   useEffect(() => {
     const ws = new WebSocket(
-      `ws://${import.meta.env.VITE_SERVER_URL}/${
-        location.pathname.split("/")[1]
-      }`
+      `${import.meta.env.VITE_WS_URL}/${location.pathname.split("/")[1]}`
     );
 
     ws.onmessage = (event) => {
@@ -65,9 +63,10 @@ export default function WebhookMessagesPanel() {
         localStorage.setItem("messages", JSON.stringify(newMessages));
         return newMessages;
       });
+      console.log(data);
 
       toast("New Message", {
-        description: `${data.protocol}://${data.host}/${data.path}`,
+        description: `${data.protocol}://${data.host}${data.fullPath}`,
         style: {
           background: "#181818",
         },
@@ -85,7 +84,7 @@ export default function WebhookMessagesPanel() {
 
   return (
     <ResizablePanel defaultSize={20} minSize={20}>
-      <div className="overflow-y-auto max-h-[calc(100vh-4rem)]">
+      <div className="overflow-y-auto max-h-[calc(100vh-6rem)]">
         {messages.map((message) => {
           return (
             <MessageBlock
