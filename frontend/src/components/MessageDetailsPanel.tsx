@@ -58,6 +58,24 @@ const MessageDetailsPanel: React.FC = () => {
     });
   };
 
+  const renderBodyContent = () => {
+    if (typeof message.body === "string") {
+      try {
+        const parsedBody = JSON.parse(message.body);
+        return <pre>{JSON.stringify(parsedBody, null, 2)}</pre>;
+      } catch (e) {
+        return <pre>{message.body}</pre>;
+      }
+    }
+
+    if (typeof message.body === "object") {
+      return <pre>{JSON.stringify(message.body, null, 2)}</pre>;
+    }
+
+    // For non-JSON content
+    return String(message.body);
+  };
+
   return (
     <ResizablePanel
       defaultSize={80}
@@ -159,9 +177,11 @@ const MessageDetailsPanel: React.FC = () => {
               <Button onClick={handleCopyBody}>Copy body</Button>
             </div>
             <pre className=" overflow-y-auto overflow-x-auto ">
-              {bodyFormatted
-                ? JSON.stringify(message.body, null, 2)
-                : JSON.stringify(message.body)}
+              {bodyFormatted ? (
+                renderBodyContent()
+              ) : (
+                <pre>{JSON.stringify(message.body)}</pre>
+              )}
             </pre>
           </div>
         )}

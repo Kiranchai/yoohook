@@ -121,12 +121,6 @@ app.all("/:webhookId/*", function (req, res, next) {
     const path = req.params[0];
     const method = req.method;
 
-    if (req.params[0] && customResponses[webhookId]?.[path]?.[method]) {
-      const customResponse = customResponses[webhookId][path][method];
-      res.set(customResponse.headers);
-      return res.status(customResponse.statusCode).json(customResponse.body);
-    }
-
     const payload = {
       headers: req.headers,
       body: req.body,
@@ -143,6 +137,12 @@ app.all("/:webhookId/*", function (req, res, next) {
     // Send data to connected WebSocket client if available
     if (clients[webhookId]) {
       clients[webhookId].send(JSON.stringify(payload));
+    }
+
+    if (req.params[0] && customResponses[webhookId]?.[path]?.[method]) {
+      const customResponse = customResponses[webhookId][path][method];
+      res.set(customResponse.headers);
+      return res.status(customResponse.statusCode).json(customResponse.body);
     }
 
     res.json({ status: "Webhook received", payload });

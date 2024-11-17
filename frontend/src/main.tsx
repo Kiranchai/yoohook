@@ -11,6 +11,7 @@ createRoot(document.getElementById("root")!).render(
         <Route path="/" element={<App />} />
         <Route path="/:webhookId" element={<App />} />
         <Route path="/:webhookId/:messageId" element={<App />} />
+        <Route path="*" element={<App />} />
       </Routes>
     </MessagesProvider>
   </BrowserRouter>
