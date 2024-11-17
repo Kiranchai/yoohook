@@ -40,7 +40,6 @@ export const methodColors: { [key: string]: string } = {
 };
 
 export default function WebhookMessagesPanel() {
-  //   const [messages, setMessages] = useState<WebhookMessage[]>([]);
   const { messages, setMessages } = useMessages();
   const location = useLocation();
 
@@ -63,7 +62,6 @@ export default function WebhookMessagesPanel() {
         localStorage.setItem("messages", JSON.stringify(newMessages));
         return newMessages;
       });
-      console.log(data);
 
       toast("New Message", {
         description: `${data.protocol}://${data.host}${data.fullPath}`,
