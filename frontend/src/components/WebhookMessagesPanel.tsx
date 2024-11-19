@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { useLocation, useNavigate } from "react-router";
 import { useMessages } from "@/providers/MessagesProvider";
 import { toast } from "sonner";
+import ClearAllButton from "./ClearAllButton";
 
 export interface WebhookMessage {
   headers: Record<string, string>;
@@ -83,6 +84,9 @@ export default function WebhookMessagesPanel() {
   return (
     <ResizablePanel defaultSize={20} minSize={20}>
       <div className="overflow-y-auto max-h-[calc(100vh-6rem)]">
+        <div className="px-2 py-4 flex items-center justify-start">
+          <ClearAllButton />
+        </div>
         {messages.map((message) => {
           return (
             <MessageBlock

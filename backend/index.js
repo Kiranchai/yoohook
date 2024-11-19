@@ -43,15 +43,17 @@ server.on("upgrade", (request, socket, head) => {
   });
 });
 
-app.post("/set-response/:webhookId/:method/:path", (req, res) => {
+app.post("/set-response/:webhookId/:method*", (req, res) => {
   try {
-    const { webhookId, method, path } = req.params;
+    const { webhookId, method } = req.params;
     const reqBody = JSON.parse(req.body);
     const customResponse = {
       body: JSON.parse(reqBody.body),
       statusCode: Number(reqBody.statusCode),
       headers: JSON.parse(reqBody.headers),
     };
+
+    const fullPath = req.params[0].length === 0 ? "/" : req.params[0];
 
     if (!customResponse) {
       return res.status(400).json({ error: "No custom response provided" });
@@ -60,46 +62,7 @@ app.post("/set-response/:webhookId/:method/:path", (req, res) => {
     if (!customResponses[webhookId]) {
       customResponses[webhookId] = {};
     }
-    if (!customResponses[webhookId][[path]]) {
-      customResponses[webhookId][path] = {};
-    }
-
-    customResponses[webhookId][path][method] = customResponse;
-
-    res.json({
-      message: "Custom response set successfully",
-      path,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(400).json({ error: "An error occurred" });
-  }
-});
-
-app.post("/set-response/:webhookId/:method/:path/*", (req, res) => {
-  try {
-    const { webhookId, method, path } = req.params;
-    const reqBody = JSON.parse(req.body);
-    const customResponse = {
-      body: JSON.parse(reqBody.body),
-      statusCode: Number(reqBody.statusCode),
-      headers: JSON.parse(reqBody.headers),
-    };
-
-    let fullPath = path;
-
-    if (req.params[0]) {
-      fullPath += "/" + req.params[0];
-    }
-
-    if (!customResponse) {
-      return res.status(400).json({ error: "No custom response provided" });
-    }
-
-    if (!customResponses[webhookId]) {
-      customResponses[webhookId] = {};
-    }
-    if (!customResponses[webhookId][fullPath]) {
+    if (!customResponses[webhookId][[fullPath]]) {
       customResponses[webhookId][fullPath] = {};
     }
 
@@ -139,8 +102,10 @@ app.all("/:webhookId/*", function (req, res, next) {
       clients[webhookId].send(JSON.stringify(payload));
     }
 
-    if (req.params[0] && customResponses[webhookId]?.[path]?.[method]) {
-      const customResponse = customResponses[webhookId][path][method];
+    const fullPath = "/" + path;
+
+    if (customResponses[webhookId]?.[fullPath]?.[method]) {
+      const customResponse = customResponses[webhookId][fullPath][method];
       res.set(customResponse.headers);
       return res.status(customResponse.statusCode).json(customResponse.body);
     }

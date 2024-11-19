@@ -104,7 +104,7 @@ export default function CustomResponseForm({
                   const data = await res.json();
                   setIsDialogOpen(false);
                   toast(data.message, {
-                    description: "/" + data.path,
+                    description: data.path,
                     style: {
                       background: "#181818",
                     },

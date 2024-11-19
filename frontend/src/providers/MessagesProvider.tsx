@@ -10,6 +10,7 @@ import React, {
 interface MessagesContextType {
   messages: WebhookMessage[];
   setMessages: React.Dispatch<React.SetStateAction<WebhookMessage[]>>;
+  clearMessages: () => void;
 }
 
 const MessagesContext = createContext<MessagesContextType | undefined>(
@@ -32,8 +33,13 @@ export const MessagesProvider: React.FC<MessagesProviderProps> = ({
     localStorage.setItem("messages", JSON.stringify(messages));
   }, [messages]);
 
+  const clearMessages = () => {
+    setMessages([]);
+    localStorage.removeItem("messages");
+  };
+
   return (
-    <MessagesContext.Provider value={{ messages, setMessages }}>
+    <MessagesContext.Provider value={{ messages, setMessages, clearMessages }}>
       {children}
     </MessagesContext.Provider>
   );
