@@ -54,11 +54,11 @@ function App() {
 
   const handleCopyToClipboard = () => {
     navigator.clipboard.writeText(
-      `${import.meta.env.VITE_SERVER_URL}/${generatedWebhookId}/`
+      `${import.meta.env.VITE_SERVER_URL}/${generatedWebhookId}`
     );
 
     toast("Copied to clipboard", {
-      description: `${import.meta.env.VITE_SERVER_URL}/${generatedWebhookId}/`,
+      description: `${import.meta.env.VITE_SERVER_URL}/${generatedWebhookId}`,
       style: {
         background: "#181818",
       },
@@ -82,7 +82,7 @@ function App() {
             className="bg-primary px-3 py-2 rounded-sm flex items-center gap-2 hover:bg-[#454b53] cursor-pointer transition-colors duration-150"
             onClick={handleCopyToClipboard}
           >
-            {import.meta.env.VITE_SERVER_URL}/{generatedWebhookId}/
+            {import.meta.env.VITE_SERVER_URL}/{generatedWebhookId}
             <FaRegCopy />
           </span>
           <AlertDialog>

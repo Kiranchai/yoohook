@@ -78,7 +78,7 @@ app.post("/set-response/:webhookId/:method*", (req, res) => {
   }
 });
 
-app.all("/:webhookId/*", function (req, res, next) {
+app.all("/:webhookId*", function (req, res, next) {
   try {
     const { webhookId } = req.params;
     const path = req.params[0];
@@ -96,6 +96,23 @@ app.all("/:webhookId/*", function (req, res, next) {
       time: Date.now(),
       id: uuidv4(),
     };
+
+    //Check for Basic auth
+    if (
+      req.headers.authorization &&
+      req.headers.authorization.startsWith("Basic ")
+    ) {
+      const base64Credentials = req.headers.authorization.split(" ")[1];
+      const credentials = Buffer.from(base64Credentials, "base64").toString(
+        "ascii"
+      );
+      const [username, password] = credentials.split(":");
+      payload["headers"] = {
+        ...payload["headers"],
+        base64username: username,
+        base64password: password,
+      };
+    }
 
     // Send data to connected WebSocket client if available
     if (clients[webhookId]) {

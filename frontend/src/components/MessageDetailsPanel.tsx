@@ -143,60 +143,62 @@ const MessageDetailsPanel: React.FC = () => {
               </Table>
             </div>
           </div>
-          {message?.queryParams &&
-            Object.entries(message?.queryParams).length > 0 && (
-              <div className="flex flex-col gap-4 max-w-[45rem] w-full h-full">
-                <span className="text-2xl font-bold">Query parameters:</span>
-                <div className="w-full text-sm">
-                  <Table className="text-sm ">
-                    <TableHeader>
-                      <TableRow className="hover:bg-primary border-secondary">
-                        <TableHead className="w-[300px] px-0">Key</TableHead>
-                        <TableHead className="px-0">Value</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {Object.entries(message?.queryParams).map(
-                        ([key, value]) => (
-                          <TableRow
-                            className="hover:bg-secondary border-secondary"
-                            key={key}
-                          >
-                            <TableCell className="font-medium p-2">
-                              {key.charAt(0).toUpperCase()}
-                              {key.slice(1)}
-                            </TableCell>
-                            <TableCell className="p-0">{value}</TableCell>
-                          </TableRow>
-                        )
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            )}
-        </div>
-        {message?.body && Object.keys(message?.body).length > 0 && (
-          <div className="bg-secondary p-4 rounded-md flex flex-col gap-4">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="format"
-                  className="border-gray-500"
-                  checked={bodyFormatted}
-                  onCheckedChange={(isChecked) => {
-                    setBodyFormatted(isChecked as boolean);
-                  }}
-                />
-                <label
-                  htmlFor="format"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Format JSON
-                </label>
-              </div>
-              <Button onClick={handleCopyBody}>Copy body</Button>
+          <div className="flex flex-col gap-4 max-w-[45rem] w-full h-full">
+            <span className="text-2xl font-bold">Query parameters:</span>
+            <div className="w-full text-sm">
+              {message?.queryParams &&
+              Object.entries(message?.queryParams).length > 0 ? (
+                <Table className="text-sm ">
+                  <TableHeader>
+                    <TableRow className="hover:bg-primary border-secondary">
+                      <TableHead className="w-[300px] px-0">Key</TableHead>
+                      <TableHead className="px-0">Value</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Object.entries(message?.queryParams).map(
+                      ([key, value]) => (
+                        <TableRow
+                          className="hover:bg-secondary border-secondary"
+                          key={key}
+                        >
+                          <TableCell className="font-medium p-2">
+                            {key.charAt(0).toUpperCase()}
+                            {key.slice(1)}
+                          </TableCell>
+                          <TableCell className="p-0">{value}</TableCell>
+                        </TableRow>
+                      )
+                    )}
+                  </TableBody>
+                </Table>
+              ) : (
+                "No content"
+              )}
             </div>
+          </div>
+        </div>
+        <div className="bg-secondary p-4 rounded-md flex flex-col gap-4">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="format"
+                className="border-gray-500"
+                checked={bodyFormatted}
+                onCheckedChange={(isChecked) => {
+                  setBodyFormatted(isChecked as boolean);
+                }}
+              />
+              <label
+                htmlFor="format"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Format JSON
+              </label>
+            </div>
+            <Button onClick={handleCopyBody}>Copy body</Button>
+          </div>
+          {message?.body && Object.keys(message?.body).length > 0 ? (
             <pre className=" overflow-y-auto overflow-x-auto ">
               {bodyFormatted ? (
                 renderBodyContent()
@@ -204,8 +206,10 @@ const MessageDetailsPanel: React.FC = () => {
                 <pre>{JSON.stringify(message?.body)}</pre>
               )}
             </pre>
-          </div>
-        )}
+          ) : (
+            "No content"
+          )}
+        </div>
       </div>
     </ResizablePanel>
   );
