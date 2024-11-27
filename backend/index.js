@@ -46,11 +46,21 @@ server.on("upgrade", (request, socket, head) => {
 app.post("/set-response/:webhookId/:method*", (req, res) => {
   try {
     const { webhookId, method } = req.params;
-    const reqBody = JSON.parse(req.body);
+    const response = JSON.parse(req.body);
+
+    if (
+      !response ||
+      !response.body ||
+      !response.statusCode ||
+      !response.headers
+    ) {
+      return res.status(400).json({ error: "Invalid custom response format" });
+    }
+
     const customResponse = {
-      body: JSON.parse(reqBody.body),
-      statusCode: Number(reqBody.statusCode),
-      headers: JSON.parse(reqBody.headers),
+      body: response.body,
+      statusCode: Number(response.statusCode),
+      headers: response.headers,
     };
 
     const fullPath = req.params[0].length === 0 ? "/" : req.params[0];
@@ -119,9 +129,14 @@ app.all("/:webhookId*", function (req, res, next) {
       clients[webhookId].send(JSON.stringify(payload));
     }
 
-    const fullPath = "/" + path;
+    let fullPath = path;
+
+    if (!fullPath.startsWith("/")) {
+      fullPath = "/" + fullPath;
+    }
 
     if (customResponses[webhookId]?.[fullPath]?.[method]) {
+      console.log(customResponses[webhookId][fullPath][method]);
       const customResponse = customResponses[webhookId][fullPath][method];
       res.set(customResponse.headers);
       return res.status(customResponse.statusCode).json(customResponse.body);

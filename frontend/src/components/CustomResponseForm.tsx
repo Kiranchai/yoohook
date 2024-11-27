@@ -96,7 +96,11 @@ export default function CustomResponseForm({
                   }/${method}/${path}`,
                   {
                     method: "POST",
-                    body: JSON.stringify({ statusCode, headers, body }),
+                    body: JSON.stringify({
+                      statusCode,
+                      headers: JSON.parse(headers),
+                      body: JSON.parse(body),
+                    }),
                   }
                 );
 
