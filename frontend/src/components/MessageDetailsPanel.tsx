@@ -176,6 +176,36 @@ const MessageDetailsPanel: React.FC = () => {
                 "No content"
               )}
             </div>
+            <span className="text-2xl font-bold mt-12">Form data:</span>
+            <div className="w-full text-sm">
+              {message?.formData &&
+              Object.entries(message?.formData).length > 0 ? (
+                <Table className="text-sm ">
+                  <TableHeader>
+                    <TableRow className="hover:bg-primary border-secondary">
+                      <TableHead className="w-[300px] px-0">Key</TableHead>
+                      <TableHead className="px-0">Value</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Object.entries(message?.formData).map(([key, value]) => (
+                      <TableRow
+                        className="hover:bg-secondary border-secondary"
+                        key={key}
+                      >
+                        <TableCell className="font-medium p-2">
+                          {key.charAt(0).toUpperCase()}
+                          {key.slice(1)}
+                        </TableCell>
+                        <TableCell className="p-0">{value}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                "No content"
+              )}
+            </div>
           </div>
         </div>
         <div className="bg-secondary p-4 rounded-md flex flex-col gap-4">

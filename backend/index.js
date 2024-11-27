@@ -2,6 +2,7 @@ import express from "express";
 import { WebSocketServer } from "ws";
 import { v4 as uuidv4 } from "uuid";
 import cors from "cors";
+import multer from "multer";
 const app = express();
 const port = 3001;
 
@@ -11,6 +12,7 @@ app.use(express.raw({ type: "application/octet-stream" }));
 app.use(express.text());
 app.use(cors());
 
+const upload = multer();
 const wss = new WebSocketServer({ noServer: true });
 
 const clients = {};
@@ -77,7 +79,6 @@ app.post("/set-response/:webhookId/:method*", (req, res) => {
     }
 
     customResponses[webhookId][fullPath][method] = customResponse;
-
     res.json({
       message: "Custom response set successfully",
       path: fullPath,
@@ -88,7 +89,7 @@ app.post("/set-response/:webhookId/:method*", (req, res) => {
   }
 });
 
-app.all("/:webhookId*", function (req, res, next) {
+app.all("/:webhookId*", upload.any(), function (req, res, next) {
   try {
     const { webhookId } = req.params;
     const path = req.params[0];
@@ -105,6 +106,7 @@ app.all("/:webhookId*", function (req, res, next) {
       method: req.method,
       time: Date.now(),
       id: uuidv4(),
+      formData: {},
     };
 
     //Check for Basic auth
@@ -124,6 +126,21 @@ app.all("/:webhookId*", function (req, res, next) {
       };
     }
 
+    if (req.is("multipart/form-data")) {
+      req.files.forEach((file) => {
+        payload.formData[file.fieldname] = {
+          originalname: file.originalname,
+          mimetype: file.mimetype,
+          size: file.size,
+          buffer: file.buffer.toString("base64"),
+        };
+      });
+
+      Object.keys(req.body).forEach((key) => {
+        payload.formData[key] = req.body[key];
+      });
+    }
+
     // Send data to connected WebSocket client if available
     if (clients[webhookId]) {
       clients[webhookId].send(JSON.stringify(payload));
@@ -136,7 +153,6 @@ app.all("/:webhookId*", function (req, res, next) {
     }
 
     if (customResponses[webhookId]?.[fullPath]?.[method]) {
-      console.log(customResponses[webhookId][fullPath][method]);
       const customResponse = customResponses[webhookId][fullPath][method];
       res.set(customResponse.headers);
       return res.status(customResponse.statusCode).json(customResponse.body);

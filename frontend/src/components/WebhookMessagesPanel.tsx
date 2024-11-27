@@ -23,6 +23,7 @@ export interface WebhookMessage {
   id: string;
   protocol: string;
   queryParams: Record<string, string>;
+  formData: Record<string, string>;
 }
 
 interface MessageComponentProps {
