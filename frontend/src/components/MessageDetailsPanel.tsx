@@ -132,10 +132,7 @@ const MessageDetailsPanel: React.FC = () => {
                         className="hover:bg-secondary border-secondary"
                         key={key}
                       >
-                        <TableCell className="font-medium p-2">
-                          {key.charAt(0).toUpperCase()}
-                          {key.slice(1)}
-                        </TableCell>
+                        <TableCell className="font-medium p-2">{key}</TableCell>
                         <TableCell className="p-0">{value}</TableCell>
                       </TableRow>
                     ))}
@@ -163,8 +160,7 @@ const MessageDetailsPanel: React.FC = () => {
                           key={key}
                         >
                           <TableCell className="font-medium p-2">
-                            {key.charAt(0).toUpperCase()}
-                            {key.slice(1)}
+                            {key}
                           </TableCell>
                           <TableCell className="p-0">{value}</TableCell>
                         </TableRow>

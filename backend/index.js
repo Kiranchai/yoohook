@@ -1,6 +1,7 @@
 import express from "express";
 import { WebSocketServer } from "ws";
 import { v4 as uuidv4 } from "uuid";
+import parseRawHeaders from "./utils/parseRawHeaders.js";
 import cors from "cors";
 import multer from "multer";
 const app = express();
@@ -96,7 +97,7 @@ app.all("/:webhookId*", upload.any(), function (req, res, next) {
     const method = req.method;
 
     const payload = {
-      headers: req.headers,
+      headers: parseRawHeaders(req.rawHeaders),
       body: req.body,
       host: req.hostname,
       protocol: req.protocol,
