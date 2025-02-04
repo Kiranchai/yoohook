@@ -49,7 +49,7 @@ server.on("upgrade", (request, socket, head) => {
 app.post("/set-response/:webhookId/:method*", (req, res) => {
   try {
     const { webhookId, method } = req.params;
-    const response = JSON.parse(req.body);
+    const response = req.body;
 
     if (
       !response ||

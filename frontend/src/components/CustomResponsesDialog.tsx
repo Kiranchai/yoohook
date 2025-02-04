@@ -89,7 +89,7 @@ export default function CustomResponsesDialog() {
                   </TooltipProvider>
                 </div>
                 <CustomResponseForm
-                  path={path.path}
+                  path={"/" + path.path}
                   method={path.method}
                   disabledUrl
                   newButton={false}
@@ -100,7 +100,7 @@ export default function CustomResponsesDialog() {
         </ScrollArea>
 
         <CustomResponseForm
-          path={""}
+          path={"/"}
           method={"GET"}
           disabledUrl={false}
           newButton
