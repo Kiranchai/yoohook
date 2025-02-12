@@ -53,34 +53,52 @@ export default function WebhookMessagesPanel() {
   }, [location]);
 
   useEffect(() => {
-    const ws = new WebSocket(
-      `${import.meta.env.VITE_WS_URL}/${location.pathname.split("/")[1]}`
-    );
+    const createWebSocket = () => {
+      const ws = new WebSocket(
+        `${import.meta.env.VITE_WS_URL}/${location.pathname.split("/")[1]}`
+      );
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      setMessages((prevMessages) => {
-        const newMessages = [data, ...prevMessages];
-        localStorage.setItem("messages", JSON.stringify(newMessages));
-        return newMessages;
-      });
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        setMessages((prevMessages) => {
+          const newMessages = [data, ...prevMessages];
+          localStorage.setItem("messages", JSON.stringify(newMessages));
+          return newMessages;
+        });
 
-      toast("New Message", {
-        description: `${data.protocol}://${data.host}${data.fullPath}`,
-        style: {
-          background: "#181818",
-        },
-      });
+        toast("New Message", {
+          description: `${data.protocol}://${data.host}${data.fullPath}`,
+          style: {
+            background: "#181818",
+          },
+        });
+      };
+
+      ws.onclose = () => {
+        toast.error("Websocket connection lost. Reconnecting...", {
+          style: {
+            background: "#ff0000",
+          },
+        });
+        setTimeout(createWebSocket, 5000);
+      };
+
+      ws.onopen = () => {
+        toast.success("WebSocket connected", {
+          style: {
+            background: "#4BB543",
+          },
+        });
+      };
+
+      return ws;
     };
 
-    ws.onclose = () => {
-      console.log("WebSocket connection closed");
-    };
-
+    const ws = createWebSocket();
     return () => {
       ws.close();
     };
-  }, [location.pathname, setMessages]);
+  }, [location.pathname.split("/")[1], setMessages]);
 
   return (
     <ResizablePanel defaultSize={20} minSize={20}>
