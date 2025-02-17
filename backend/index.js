@@ -9,7 +9,7 @@ const port = 3001;
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.raw({ type: "application/octet-stream" }));
+app.use(express.raw({ type: ["application/octet-stream", "application/xml"] }));
 app.use(express.text());
 app.use(cors());
 
@@ -91,6 +91,12 @@ app.post("/set-response/:webhookId/:method*", (req, res) => {
 });
 
 app.all("/:webhookId*", upload.any(), function (req, res, next) {
+  let body = req.body;
+
+  if (!body.toString().startsWith("[object")) {
+    body = Buffer.from(req.body, "utf-8").toString();
+  }
+
   try {
     const { webhookId } = req.params;
     const path = req.params[0];
@@ -98,7 +104,7 @@ app.all("/:webhookId*", upload.any(), function (req, res, next) {
 
     const payload = {
       headers: parseRawHeaders(req.rawHeaders),
-      body: req.body,
+      body: body,
       host: req.hostname,
       protocol: req.protocol,
       fullPath: req.path,

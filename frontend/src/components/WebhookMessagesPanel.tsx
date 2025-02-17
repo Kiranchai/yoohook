@@ -54,9 +54,12 @@ export default function WebhookMessagesPanel() {
 
   useEffect(() => {
     const createWebSocket = () => {
-      const ws = new WebSocket(
-        `${import.meta.env.VITE_WS_URL}/${location.pathname.split("/")[1]}`
-      );
+      const pathParts = location.pathname.split("/");
+      const id = pathParts[1];
+
+      if (!id) return;
+
+      const ws = new WebSocket(`${import.meta.env.VITE_WS_URL}/${id}`);
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -96,9 +99,11 @@ export default function WebhookMessagesPanel() {
 
     const ws = createWebSocket();
     return () => {
-      ws.close();
+      if (ws) {
+        ws.close();
+      }
     };
-  }, [location.pathname.split("/")[1], setMessages]);
+  }, [location.pathname.split("/")[1]]);
 
   return (
     <ResizablePanel defaultSize={20} minSize={20}>
