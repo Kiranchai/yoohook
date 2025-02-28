@@ -193,7 +193,9 @@ const MessageDetailsPanel: React.FC = () => {
                           {key.charAt(0).toUpperCase()}
                           {key.slice(1)}
                         </TableCell>
-                        <TableCell className="p-0">{value}</TableCell>
+                        <TableCell className="p-0">
+                          {JSON.stringify(value)}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

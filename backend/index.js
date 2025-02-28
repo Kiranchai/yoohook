@@ -93,7 +93,7 @@ app.post("/set-response/:webhookId/:method*", (req, res) => {
 app.all("/:webhookId*", upload.any(), function (req, res, next) {
   let body = req.body;
 
-  if (!body.toString().startsWith("[object")) {
+  if (req.is("application/xml")) {
     body = Buffer.from(req.body, "utf-8").toString();
   }
 
