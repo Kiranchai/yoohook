@@ -14,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import ServerHeadersCollapsible from "./ServerHeadersCollapsible";
 
 const MessageDetailsPanel: React.FC = () => {
   const { messageId } = useParams();
@@ -78,6 +79,16 @@ const MessageDetailsPanel: React.FC = () => {
     });
   };
 
+  const serverHeaders = [
+    "X-Forwarded-For",
+    "X-Forwarded-Host",
+    "X-Forwarded-Proto",
+    "X-Railway-Edge",
+    "X-Railway-Request-Id",
+    "X-Real-Ip",
+    "X-Request-Start",
+  ];
+
   const renderBodyContent = () => {
     if (typeof message.body === "string") {
       try {
@@ -127,18 +138,26 @@ const MessageDetailsPanel: React.FC = () => {
                 </TableHeader>
                 <TableBody>
                   {message?.headers &&
-                    Object.entries(message.headers).map(([key, value]) => (
-                      <TableRow
-                        className="hover:bg-secondary border-secondary"
-                        key={key}
-                      >
-                        <TableCell className="font-medium p-2">{key}</TableCell>
-                        <TableCell className="p-0">{value}</TableCell>
-                      </TableRow>
-                    ))}
+                    Object.entries(message.headers)
+                      .filter((header) => !serverHeaders.includes(header[0]))
+                      .map(([key, value]) => (
+                        <TableRow
+                          className="hover:bg-secondary border-secondary"
+                          key={key}
+                        >
+                          <TableCell className="font-medium p-2">
+                            {key}
+                          </TableCell>
+                          <TableCell className="p-0">{value}</TableCell>
+                        </TableRow>
+                      ))}
                 </TableBody>
               </Table>
             </div>
+            <ServerHeadersCollapsible
+              message={message}
+              serverHeaders={serverHeaders}
+            />
           </div>
           <div className="flex flex-col gap-4 max-w-[45rem] w-full h-full">
             <span className="text-2xl font-bold">Query parameters:</span>
