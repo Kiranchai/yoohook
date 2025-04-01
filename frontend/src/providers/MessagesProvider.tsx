@@ -1,4 +1,4 @@
-import { WebhookMessage } from "@/components/WebhookMessagesPanel";
+import { WebhookMessage } from "@/types/webhook";
 import React, {
   createContext,
   useContext,
