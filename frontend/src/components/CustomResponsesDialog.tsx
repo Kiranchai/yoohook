@@ -11,7 +11,7 @@ import { IoIosSettings } from "react-icons/io";
 import { useEffect, useState } from "react";
 import { ScrollArea } from "./ui/scroll-area";
 import { useMessages } from "@/providers/MessagesProvider";
-import { methodColors } from "./WebhookMessagesPanel";
+import { methodColors } from "@/types/webhook";
 import {
   Tooltip,
   TooltipContent,

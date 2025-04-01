@@ -1,6 +1,6 @@
 import { useLocation, useParams } from "react-router";
 import { ResizablePanel } from "./ui/resizable";
-import { methodColors, WebhookMessage } from "./WebhookMessagesPanel";
+import { methodColors, WebhookMessage } from "@/types/webhook";
 import { useEffect, useState } from "react";
 import { useMessages } from "@/providers/MessagesProvider";
 import { Button } from "./ui/button";

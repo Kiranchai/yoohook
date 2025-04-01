@@ -1,49 +1,17 @@
-import React, { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import { ResizablePanel } from "./ui/resizable";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { RiDeleteBin6Line } from "react-icons/ri";
-import { Button } from "@/components/ui/button";
-import { useLocation, useNavigate } from "react-router";
+import { useLocation, useParams } from "react-router";
 import { useMessages } from "@/providers/MessagesProvider";
-import { toast } from "sonner";
 import ClearAllButton from "./ClearAllButton";
-
-export interface WebhookMessage {
-  headers: Record<string, string>;
-  body: Record<string, any>;
-  host: string;
-  path: string;
-  method: string;
-  time: string;
-  id: string;
-  protocol: string;
-  queryParams: Record<string, string>;
-  formData: Record<string, string>;
-}
-
-interface MessageComponentProps {
-  message: WebhookMessage;
-  setMessages: React.Dispatch<React.SetStateAction<WebhookMessage[]>>;
-}
-
-export const methodColors: { [key: string]: string } = {
-  GET: "#5bc0de",
-  POST: "#5cb85c",
-  PUT: "#f0ad4e",
-  PATCH: "#607b59",
-  DELETE: "#a71b17",
-  HEAD: "#1f5b8f",
-  OPTIONS: "#777",
-};
+import { WebhookMessageBlock } from "./WebhookMessageBlock";
+import { useWebSocket } from "@/hooks/useWebSocket";
+import { WebhookMessage } from "@/types/webhook";
 
 export default function WebhookMessagesPanel() {
   const { messages, setMessages } = useMessages();
   const location = useLocation();
+  const { messageId } = useParams();
+  const webhookId = location.pathname.split("/")[1];
 
   useEffect(() => {
     const savedMessages = localStorage.getItem("messages");
@@ -52,58 +20,21 @@ export default function WebhookMessagesPanel() {
     }
   }, [location]);
 
-  useEffect(() => {
-    const createWebSocket = () => {
-      const pathParts = location.pathname.split("/");
-      const id = pathParts[1];
+  const handleNewMessage = useCallback(
+    (data: WebhookMessage) => {
+      setMessages((prevMessages) => {
+        const newMessages = [data, ...prevMessages];
+        localStorage.setItem("messages", JSON.stringify(newMessages));
+        return newMessages;
+      });
+    },
+    [setMessages]
+  );
 
-      if (!id) return;
-
-      const ws = new WebSocket(`${import.meta.env.VITE_WS_URL}/${id}`);
-
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        setMessages((prevMessages) => {
-          const newMessages = [data, ...prevMessages];
-          localStorage.setItem("messages", JSON.stringify(newMessages));
-          return newMessages;
-        });
-
-        toast("New Message", {
-          description: `${data.protocol}://${data.host}${data.fullPath}`,
-          style: {
-            background: "#181818",
-          },
-        });
-      };
-
-      ws.onclose = () => {
-        toast.error("Websocket connection lost. Reconnecting...", {
-          style: {
-            background: "#ff0000",
-          },
-        });
-        setTimeout(createWebSocket, 5000);
-      };
-
-      ws.onopen = () => {
-        toast.success("WebSocket connected", {
-          style: {
-            background: "#4BB543",
-          },
-        });
-      };
-
-      return ws;
-    };
-
-    const ws = createWebSocket();
-    return () => {
-      if (ws) {
-        ws.close();
-      }
-    };
-  }, [location.pathname.split("/")[1]]);
+  useWebSocket({
+    webhookId,
+    onMessage: handleNewMessage,
+  });
 
   return (
     <ResizablePanel defaultSize={20} minSize={20}>
@@ -111,92 +42,14 @@ export default function WebhookMessagesPanel() {
         <div className="px-2 py-4 flex items-center justify-start">
           <ClearAllButton />
         </div>
-        {messages.map((message) => {
-          return (
-            <MessageBlock
-              key={message.id}
-              message={message}
-              setMessages={setMessages}
-            />
-          );
-        })}
+        {messages.map((message) => (
+          <WebhookMessageBlock
+            key={message.id}
+            message={message}
+            isSelected={message.id === messageId}
+          />
+        ))}
       </div>
     </ResizablePanel>
   );
 }
-
-const MessageBlock: React.FC<MessageComponentProps> = ({ message }) => {
-  const navigate = useNavigate();
-  const { setMessages } = useMessages();
-  const location = useLocation().pathname.split("/");
-
-  const handleOnClick = () => {
-    navigate(`/${location[1]}/${message.id}`);
-  };
-
-  const removeMessageById = (
-    e: React.MouseEvent<HTMLButtonElement>,
-    id: string
-  ) => {
-    e.stopPropagation();
-    setMessages((prevMessages) => {
-      const updatedMessages = prevMessages.filter(
-        (message) => message.id !== id
-      );
-
-      if (updatedMessages.length === 0) {
-        navigate(`/${location[1]}/`);
-      }
-      localStorage.setItem("messages", JSON.stringify(updatedMessages));
-
-      if (location[2]?.startsWith(id)) {
-        navigate(`/${location[1]}/`);
-      }
-      return updatedMessages;
-    });
-  };
-
-  return (
-    <div
-      className="min-h-[5rem] p-4 hover:bg-[#181818] flex gap-4 items-center justify-between border-t-gray-700 border-t-2 transition-colors duration-150 cursor-pointer"
-      onClick={handleOnClick}
-    >
-      <div className="flex flex-col gap-2 flex-grow max-w-[85%]">
-        <div className="flex items-center gap-4">
-          <div
-            style={{
-              backgroundColor: methodColors[message.method],
-            }}
-            className={`px-2 py-1 rounded-sm`}
-          >
-            {message.method}
-          </div>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="flex-grow truncate text-ellipsis overflow-hidden whitespace-nowrap font-light">
-                  /{message.path}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent className="bg-black text-foreground border-gray-600 py-3 px-4">
-                <p>/{message.path}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-        <div className="text-foregroundDarker flex flex-col gap-1">
-          <span>
-            {new Date(message.time).toTimeString().split(" ")[0]} | ID:{" "}
-            {message.id.slice(0, 8)}
-          </span>
-        </div>
-      </div>
-      <Button
-        className="transition-colors duration-150 aspect-square w-10 h-10 bg-red-700 hover:bg-red-800"
-        onClick={(e) => removeMessageById(e, message.id)}
-      >
-        <RiDeleteBin6Line />
-      </Button>
-    </div>
-  );
-};
