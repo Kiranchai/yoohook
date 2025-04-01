@@ -17,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { WebhookMessage } from "./WebhookMessagesPanel";
+import { WebhookMessage } from "@/types/webhook";
 
 export function ServerHeadersCollapsible({
   message,
