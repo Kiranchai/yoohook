@@ -11,7 +11,6 @@ export const useWebSocket = ({ webhookId, onMessage }: UseWebSocketProps) => {
   const onMessageRef = useRef(onMessage);
   const wsRef = useRef<WebSocket | null>(null);
 
-  // Update the ref when onMessage changes
   useEffect(() => {
     onMessageRef.current = onMessage;
   }, [onMessage]);
@@ -66,5 +65,5 @@ export const useWebSocket = ({ webhookId, onMessage }: UseWebSocketProps) => {
         wsRef.current = null;
       }
     };
-  }, [webhookId]); // Only depend on webhookId
+  }, [webhookId]);
 };
