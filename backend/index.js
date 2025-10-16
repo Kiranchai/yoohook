@@ -9,7 +9,11 @@ const port = 3001;
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.raw({ type: ["application/octet-stream", "application/xml"] }));
+app.use(
+  express.raw({
+    type: ["application/octet-stream", "application/xml", "text/xml"],
+  })
+);
 app.use(express.text());
 app.use(cors());
 
@@ -51,12 +55,20 @@ app.post("/set-response/:webhookId/:method*", (req, res) => {
     const { webhookId, method } = req.params;
     const response = req.body;
 
+    console.log("Received set-response request:", {
+      webhookId,
+      method,
+      fullPath: req.params[0].length === 0 ? "/" : req.params[0],
+      body: response,
+    });
+
     if (
       !response ||
-      !response.body ||
+      response.body === undefined ||
       !response.statusCode ||
       !response.headers
     ) {
+      console.log("Invalid request format:", { response });
       return res.status(400).json({ error: "Invalid custom response format" });
     }
 
@@ -64,6 +76,7 @@ app.post("/set-response/:webhookId/:method*", (req, res) => {
       body: response.body,
       statusCode: Number(response.statusCode),
       headers: response.headers,
+      bodyFormat: response.bodyFormat || "json",
     };
 
     const fullPath = req.params[0].length === 0 ? "/" : req.params[0];
@@ -75,11 +88,17 @@ app.post("/set-response/:webhookId/:method*", (req, res) => {
     if (!customResponses[webhookId]) {
       customResponses[webhookId] = {};
     }
-    if (!customResponses[webhookId][[fullPath]]) {
+    if (!customResponses[webhookId][fullPath]) {
       customResponses[webhookId][fullPath] = {};
     }
 
     customResponses[webhookId][fullPath][method] = customResponse;
+
+    console.log(
+      `Custom response set for ${method} ${fullPath} (format: ${customResponse.bodyFormat})`
+    );
+    console.log("Stored custom response body:", customResponse.body);
+
     res.json({
       message: "Custom response set successfully",
       path: fullPath,
@@ -93,7 +112,7 @@ app.post("/set-response/:webhookId/:method*", (req, res) => {
 app.all("/:webhookId*", upload.any(), function (req, res, next) {
   let body = req.body;
 
-  if (req.is("application/xml")) {
+  if (req.is("application/xml") || req.is("text/xml")) {
     body = Buffer.from(req.body, "utf-8").toString();
   }
 
@@ -159,10 +178,56 @@ app.all("/:webhookId*", upload.any(), function (req, res, next) {
       fullPath = "/" + fullPath;
     }
 
+    console.log(
+      `Looking for custom response: ${webhookId} -> ${fullPath} -> ${method}`
+    );
+    console.log("Available webhookIds:", Object.keys(customResponses));
+    if (customResponses[webhookId]) {
+      console.log(
+        "Available paths for webhookId:",
+        Object.keys(customResponses[webhookId])
+      );
+      if (customResponses[webhookId][fullPath]) {
+        console.log(
+          "Available methods for path:",
+          Object.keys(customResponses[webhookId][fullPath])
+        );
+      }
+    }
+
     if (customResponses[webhookId]?.[fullPath]?.[method]) {
       const customResponse = customResponses[webhookId][fullPath][method];
+
+      console.log(
+        `FOUND custom response for ${method} ${fullPath} (format: ${
+          customResponse.bodyFormat || "json"
+        })`
+      );
+      console.log("Sending custom body:", customResponse.body);
+
       res.set(customResponse.headers);
-      return res.status(customResponse.statusCode).json(customResponse.body);
+
+      if (customResponse.bodyFormat === "xml") {
+        if (
+          !customResponse.headers["Content-Type"] &&
+          !customResponse.headers["content-type"]
+        ) {
+          res.set("Content-Type", "application/xml");
+        }
+        console.log("Sending XML response");
+        return res.status(customResponse.statusCode).send(customResponse.body);
+      } else {
+        if (
+          !customResponse.headers["Content-Type"] &&
+          !customResponse.headers["content-type"]
+        ) {
+          res.set("Content-Type", "application/json");
+        }
+        console.log("Sending JSON response");
+        return res.status(customResponse.statusCode).json(customResponse.body);
+      }
+    } else {
+      console.log(`NO custom response found for ${method} ${fullPath}`);
     }
 
     res.json({ status: "Webhook received", payload });
