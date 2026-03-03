@@ -10,15 +10,15 @@ import { WebhookMessage } from "@/types/webhook";
 export default function WebhookMessagesPanel() {
   const { messages, setMessages } = useMessages();
   const location = useLocation();
-  const { messageId } = useParams();
-  const webhookId = location.pathname.split("/")[1];
+  const { messageId, webhookId: paramWebhookId } = useParams();
+  const webhookId = paramWebhookId || location.pathname.split("/")[1];
 
   useEffect(() => {
     const savedMessages = localStorage.getItem("messages");
     if (savedMessages) {
       setMessages(JSON.parse(savedMessages));
     }
-  }, [location]);
+  }, [webhookId]);
 
   const handleNewMessage = useCallback(
     (data: WebhookMessage) => {
@@ -28,7 +28,7 @@ export default function WebhookMessagesPanel() {
         return newMessages;
       });
     },
-    [setMessages]
+    [setMessages],
   );
 
   useWebSocket({

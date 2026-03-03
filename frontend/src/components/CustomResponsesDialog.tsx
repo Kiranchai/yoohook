@@ -54,7 +54,7 @@ export default function CustomResponsesDialog() {
           Set custom response <IoIosSettings />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-[600px]">
+      <DialogContent className="max-w-[600px] w-full">
         <DialogHeader>
           <DialogTitle>Set custom responses</DialogTitle>
           <DialogDescription>Detected endpoints:</DialogDescription>
