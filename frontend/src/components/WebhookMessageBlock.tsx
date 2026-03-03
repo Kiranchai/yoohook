@@ -21,7 +21,7 @@ export const WebhookMessageBlock: React.FC<WebhookMessageBlockProps> = ({
   isSelected = false,
 }) => {
   const navigate = useNavigate();
-  const { setMessages } = useMessages();
+  const { messages, setMessages } = useMessages();
   const location = useLocation().pathname.split("/");
 
   const handleOnClick = () => {
@@ -33,21 +33,13 @@ export const WebhookMessageBlock: React.FC<WebhookMessageBlockProps> = ({
     id: string
   ) => {
     e.stopPropagation();
-    setMessages((prevMessages) => {
-      const updatedMessages = prevMessages.filter(
-        (message) => message.id !== id
-      );
+    setMessages((prevMessages) =>
+      prevMessages.filter((message) => message.id !== id)
+    );
 
-      if (updatedMessages.length === 0) {
-        navigate(`/${location[1]}/`);
-      }
-      localStorage.setItem("messages", JSON.stringify(updatedMessages));
-
-      if (location[2]?.startsWith(id)) {
-        navigate(`/${location[1]}/`);
-      }
-      return updatedMessages;
-    });
+    if (location[2]?.startsWith(id) || messages.length <= 1) {
+      navigate(`/${location[1]}/`);
+    }
   };
 
   return (

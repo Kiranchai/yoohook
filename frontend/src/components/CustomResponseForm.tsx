@@ -42,7 +42,31 @@ export default function CustomResponseForm({
   const [statusCode, setStatusCode] = useState("");
   const [headers, setHeaders] = useState("");
   const [body, setBody] = useState("");
-  const [bodyFormat, setBodyFormat] = useState<"json" | "xml">("json");
+  type BodyFormat =
+    | "json"
+    | "xml"
+    | "text"
+    | "html"
+    | "yaml"
+    | "form-urlencoded"
+    | "raw";
+
+  const getMonacoLanguage = (format: BodyFormat): string => {
+    switch (format) {
+      case "json":
+        return "json";
+      case "xml":
+        return "xml";
+      case "html":
+        return "html";
+      case "yaml":
+        return "yaml";
+      default:
+        return "plaintext";
+    }
+  };
+
+  const [bodyFormat, setBodyFormat] = useState<BodyFormat>("json");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [headersError, setHeadersError] = useState("");
@@ -192,6 +216,17 @@ export default function CustomResponseForm({
     }
   };
 
+  const validateFormUrlEncoded = (value: string): string => {
+    if (!value.trim()) return "";
+    const segments = value.split("&");
+    for (const segment of segments) {
+      if (segment && !segment.includes("=")) {
+        return "Each parameter must contain '=' (e.g. key=value&key2=value2)";
+      }
+    }
+    return "";
+  };
+
   const handleHeadersChange = (value: string) => {
     setHeaders(value);
     const error = validateJSON(value);
@@ -200,15 +235,40 @@ export default function CustomResponseForm({
 
   const handleBodyChange = (value: string) => {
     setBody(value);
-    const error =
-      bodyFormat === "json" ? validateJSON(value) : validateXML(value);
+    let error = "";
+    switch (bodyFormat) {
+      case "json":
+        error = validateJSON(value);
+        break;
+      case "xml":
+        error = validateXML(value);
+        break;
+      case "form-urlencoded":
+        error = validateFormUrlEncoded(value);
+        break;
+      default:
+        break;
+    }
     setBodyError(error);
   };
 
-  const handleFormatChange = (format: "json" | "xml") => {
+  const handleFormatChange = (format: BodyFormat) => {
     setBodyFormat(format);
     if (body) {
-      const error = format === "json" ? validateJSON(body) : validateXML(body);
+      let error = "";
+      switch (format) {
+        case "json":
+          error = validateJSON(body);
+          break;
+        case "xml":
+          error = validateXML(body);
+          break;
+        case "form-urlencoded":
+          error = validateFormUrlEncoded(body);
+          break;
+        default:
+          break;
+      }
       setBodyError(error);
     }
 
@@ -226,15 +286,21 @@ export default function CustomResponseForm({
 
   const handleBodyBlur = () => {
     if (body && !bodyError) {
-      const formatted =
-        bodyFormat === "json" ? formatJSON(body) : formatXML(body);
-      setBody(formatted);
+      switch (bodyFormat) {
+        case "json":
+          setBody(formatJSON(body));
+          break;
+        case "xml":
+          setBody(formatXML(body));
+          break;
+        default:
+          break;
+      }
     }
   };
 
   const insertHeadersTemplate = () => {
     const template = {
-      "Content-Type": "application/json",
       Authorization: "Bearer your-token-here",
       "X-API-Key": "your-api-key",
     };
@@ -244,20 +310,22 @@ export default function CustomResponseForm({
   };
 
   const insertBodyTemplate = () => {
-    if (bodyFormat === "json") {
-      const template = {
-        status: "success",
-        message: "Request processed successfully",
-        data: {
-          id: 1,
-          name: "Example Response",
-          created_at: new Date().toISOString(),
-        },
-      };
-      const formatted = JSON.stringify(template, null, 2);
-      setBody(formatted);
-    } else {
-      const xmlTemplate = `<?xml version="1.0" encoding="UTF-8"?>
+    switch (bodyFormat) {
+      case "json": {
+        const template = {
+          status: "success",
+          message: "Request processed successfully",
+          data: {
+            id: 1,
+            name: "Example Response",
+            created_at: new Date().toISOString(),
+          },
+        };
+        setBody(JSON.stringify(template, null, 2));
+        break;
+      }
+      case "xml": {
+        setBody(`<?xml version="1.0" encoding="UTF-8"?>
 <response>
   <status>success</status>
   <message>Request processed successfully</message>
@@ -266,8 +334,43 @@ export default function CustomResponseForm({
     <name>Example Response</name>
     <created_at>${new Date().toISOString()}</created_at>
   </data>
-</response>`;
-      setBody(xmlTemplate);
+</response>`);
+        break;
+      }
+      case "text": {
+        setBody("Request processed successfully.");
+        break;
+      }
+      case "html": {
+        setBody(`<!DOCTYPE html>
+<html>
+<head>
+  <title>Response</title>
+</head>
+<body>
+  <h1>Success</h1>
+  <p>Request processed successfully.</p>
+</body>
+</html>`);
+        break;
+      }
+      case "yaml": {
+        setBody(`status: success
+message: Request processed successfully
+data:
+  id: 1
+  name: Example Response
+  created_at: "${new Date().toISOString()}"`);
+        break;
+      }
+      case "form-urlencoded": {
+        setBody("status=success&message=Request+processed+successfully");
+        break;
+      }
+      case "raw": {
+        setBody("");
+        break;
+      }
     }
     setBodyError("");
   };
@@ -526,18 +629,25 @@ export default function CustomResponseForm({
               <Label htmlFor="body">Body</Label>
               <div className="flex items-center gap-2">
                 <Select
-                  onValueChange={(value: "json" | "xml") =>
-                    handleFormatChange(value)
+                  onValueChange={(value) =>
+                    handleFormatChange(value as BodyFormat)
                   }
                   defaultValue="json"
                   value={bodyFormat}
                 >
-                  <SelectTrigger className="w-20 h-auto text-xs px-2 py-1">
+                  <SelectTrigger className="w-36 h-auto text-xs px-2 py-1">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="json">JSON</SelectItem>
                     <SelectItem value="xml">XML</SelectItem>
+                    <SelectItem value="text">Plain Text</SelectItem>
+                    <SelectItem value="html">HTML</SelectItem>
+                    <SelectItem value="yaml">YAML</SelectItem>
+                    <SelectItem value="form-urlencoded">
+                      Form URL-encoded
+                    </SelectItem>
+                    <SelectItem value="raw">Raw</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button
@@ -559,8 +669,8 @@ export default function CustomResponseForm({
               {isEditorReady ? (
                 <Editor
                   height="200px"
-                  defaultLanguage={bodyFormat}
-                  language={bodyFormat}
+                  defaultLanguage={getMonacoLanguage(bodyFormat)}
+                  language={getMonacoLanguage(bodyFormat)}
                   value={body}
                   onChange={(value: string | undefined) =>
                     handleBodyChange(value || "")
@@ -615,6 +725,11 @@ export default function CustomResponseForm({
                 </div>
               )}
             </div>
+            {bodyFormat === "raw" && (
+              <span className="text-yellow-500 text-xs">
+                Set Content-Type in headers
+              </span>
+            )}
             {bodyError && (
               <span className="text-destructive text-xs">{bodyError}</span>
             )}
@@ -646,7 +761,7 @@ export default function CustomResponseForm({
                     return;
                   }
 
-                  if (body === "" || headers === "") {
+                  if (headers === "" || (body === "" && bodyFormat !== "raw")) {
                     setErrorMessage("Body and headers must be provided");
                     return;
                   }
@@ -666,11 +781,7 @@ export default function CustomResponseForm({
                       parsedBody = body;
                     }
                   } catch (error) {
-                    setErrorMessage(
-                      `Invalid ${
-                        bodyFormat === "json" ? "JSON" : "format in"
-                      } format in headers or body`,
-                    );
+                    setErrorMessage("Invalid format in headers or body");
                     setIsLoading(false);
                     return;
                   }

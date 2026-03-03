@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import ServerHeadersCollapsible from "./ServerHeadersCollapsible";
+import yaml from "js-yaml";
 
 const MessageDetailsPanel: React.FC = () => {
   const { messageId } = useParams();
@@ -44,32 +45,144 @@ const MessageDetailsPanel: React.FC = () => {
     );
   }
 
-  const handleCopyBody = () => {
-    let copiedText = "";
+  const getContentType = (): string => {
+    if (!message?.headers) return "";
+    const ct =
+      message.headers["Content-Type"] || message.headers["content-type"] || "";
+    return ct.toLowerCase();
+  };
+
+  const formatXML = (xmlString: string): string => {
+    try {
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlString, "application/xml");
+      if (xmlDoc.querySelector("parsererror")) return xmlString;
+
+      const serialize = (node: Node, depth: number): string => {
+        const pad = "  ".repeat(depth);
+
+        if (node.nodeType === Node.PROCESSING_INSTRUCTION_NODE) {
+          const pi = node as ProcessingInstruction;
+          return `${pad}<?${pi.target} ${pi.data}?>`;
+        }
+
+        if (node.nodeType === Node.COMMENT_NODE) {
+          return `${pad}<!--${node.textContent}-->`;
+        }
+
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent?.trim();
+          return text || "";
+        }
+
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const el = node as Element;
+          let attrs = "";
+          for (const attr of Array.from(el.attributes)) {
+            attrs += ` ${attr.name}="${attr.value}"`;
+          }
+
+          const children = Array.from(el.childNodes)
+            .map((child) => serialize(child, depth + 1))
+            .filter(Boolean);
+
+          if (children.length === 0) {
+            return `${pad}<${el.tagName}${attrs} />`;
+          }
+
+          if (
+            children.length === 1 &&
+            el.childNodes[0].nodeType === Node.TEXT_NODE
+          ) {
+            return `${pad}<${el.tagName}${attrs}>${el.childNodes[0].textContent?.trim()}</${el.tagName}>`;
+          }
+
+          return `${pad}<${el.tagName}${attrs}>\n${children.join("\n")}\n${pad}</${el.tagName}>`;
+        }
+
+        if (node.nodeType === Node.DOCUMENT_NODE) {
+          return Array.from(node.childNodes)
+            .map((child) => serialize(child, depth))
+            .filter(Boolean)
+            .join("\n");
+        }
+
+        return "";
+      };
+
+      const xmlDecl = xmlString.match(/^<\?xml[^?]*\?>/);
+      const body = serialize(xmlDoc, 0);
+      return xmlDecl ? `${xmlDecl[0]}\n${body}` : body;
+    } catch {
+      return xmlString;
+    }
+  };
+
+  const formatYAML = (yamlString: string): string => {
+    try {
+      const parsed = yaml.load(yamlString);
+      return yaml.dump(parsed, { indent: 2, lineWidth: -1 });
+    } catch {
+      return yamlString;
+    }
+  };
+
+  const formatFormUrlEncoded = (value: string): string => {
+    try {
+      const params = new URLSearchParams(value);
+      return Array.from(params.entries())
+        .map(([k, v]) => `${decodeURIComponent(k)} = ${decodeURIComponent(v)}`)
+        .join("\n");
+    } catch {
+      return value;
+    }
+  };
+
+  const getBodyText = (formatted: boolean): string => {
+    const contentType = getContentType();
+
     if (typeof message.body === "string") {
+      if (!formatted) return message.body;
+
+      // JSON string
       try {
-        const parsedBody = JSON.parse(message.body);
-        navigator.clipboard.writeText(
-          bodyFormatted
-            ? JSON.stringify(parsedBody, null, 2)
-            : JSON.stringify(parsedBody)
-        );
-        copiedText = bodyFormatted
-          ? JSON.stringify(parsedBody, null, 2)
-          : JSON.stringify(parsedBody);
-      } catch (e) {
-        console.error(e);
+        const parsed = JSON.parse(message.body);
+        return JSON.stringify(parsed, null, 2);
+      } catch {}
+
+      // XML
+      if (contentType.includes("xml")) {
+        return formatXML(message.body);
       }
-    } else {
-      navigator.clipboard.writeText(
-        bodyFormatted
-          ? JSON.stringify(message.body, null, 2)
-          : JSON.stringify(message.body)
-      );
-      copiedText = bodyFormatted
+
+      // Form URL-encoded
+      if (contentType.includes("x-www-form-urlencoded")) {
+        return formatFormUrlEncoded(message.body);
+      }
+
+      // YAML
+      if (
+        contentType.includes("yaml") ||
+        contentType.includes("x-yaml")
+      ) {
+        return formatYAML(message.body);
+      }
+
+      return message.body;
+    }
+
+    if (typeof message.body === "object") {
+      return formatted
         ? JSON.stringify(message.body, null, 2)
         : JSON.stringify(message.body);
     }
+
+    return String(message.body);
+  };
+
+  const handleCopyBody = () => {
+    const copiedText = getBodyText(bodyFormatted);
+    navigator.clipboard.writeText(copiedText);
 
     toast("Copied to clipboard", {
       description: `${copiedText.slice(0, 30)}...`,
@@ -83,28 +196,21 @@ const MessageDetailsPanel: React.FC = () => {
     "X-Forwarded-For",
     "X-Forwarded-Host",
     "X-Forwarded-Proto",
+    "X-Forwarded-Port",
+    "X-Forwarded-Server",
     "X-Railway-Edge",
     "X-Railway-Request-Id",
     "X-Real-Ip",
     "X-Request-Start",
+    "Cdn-Loop",
+    "Cf-Connecting-Ip",
+    "Cf-Ipcountry",
+    "Cf-Ray",
+    "Cf-Visitor",
   ];
 
   const renderBodyContent = () => {
-    if (typeof message.body === "string") {
-      try {
-        const parsedBody = JSON.parse(message.body);
-        return <pre>{JSON.stringify(parsedBody, null, 2)}</pre>;
-      } catch (e) {
-        return <pre>{message.body}</pre>;
-      }
-    }
-
-    if (typeof message.body === "object") {
-      return <pre>{JSON.stringify(message.body, null, 2)}</pre>;
-    }
-
-    // For non-JSON content
-    return String(message.body);
+    return <pre>{getBodyText(bodyFormatted)}</pre>;
   };
 
   return (
@@ -240,18 +346,14 @@ const MessageDetailsPanel: React.FC = () => {
                 htmlFor="format"
                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
               >
-                Format JSON
+                Pretty print
               </label>
             </div>
             <Button onClick={handleCopyBody}>Copy body</Button>
           </div>
-          {message?.body && Object.keys(message?.body).length > 0 ? (
+          {message?.body && (typeof message.body === "string" ? (message.body as string).length > 0 : Object.keys(message.body).length > 0) ? (
             <pre className=" overflow-y-auto overflow-x-auto ">
-              {bodyFormatted ? (
-                renderBodyContent()
-              ) : (
-                <pre>{JSON.stringify(message?.body)}</pre>
-              )}
+              {renderBodyContent()}
             </pre>
           ) : (
             "No content"

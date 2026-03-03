@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import { useCallback } from "react";
 import { ResizablePanel } from "./ui/resizable";
 import { useLocation, useParams } from "react-router";
 import { useMessages } from "@/providers/MessagesProvider";
@@ -13,25 +13,14 @@ export default function WebhookMessagesPanel() {
   const { messageId, webhookId: paramWebhookId } = useParams();
   const webhookId = paramWebhookId || location.pathname.split("/")[1];
 
-  useEffect(() => {
-    const savedMessages = localStorage.getItem("messages");
-    if (savedMessages) {
-      setMessages(JSON.parse(savedMessages));
-    }
-  }, [webhookId]);
-
   const handleNewMessage = useCallback(
     (data: WebhookMessage) => {
-      setMessages((prevMessages) => {
-        const newMessages = [data, ...prevMessages];
-        localStorage.setItem("messages", JSON.stringify(newMessages));
-        return newMessages;
-      });
+      setMessages((prevMessages) => [data, ...prevMessages]);
     },
     [setMessages],
   );
 
-  useWebSocket({
+  const { connected } = useWebSocket({
     webhookId,
     onMessage: handleNewMessage,
   });
@@ -50,6 +39,11 @@ export default function WebhookMessagesPanel() {
           />
         ))}
       </div>
+      {!connected && (
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-2 rounded-lg bg-red-700 text-white text-sm font-semibold animate-pulse shadow-lg">
+          Disconnected
+        </div>
+      )}
     </ResizablePanel>
   );
 }

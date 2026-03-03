@@ -2,6 +2,7 @@ import { useNavigate, useParams } from "react-router";
 import Dashboard from "./components/Dashboard";
 import { useEffect, useState } from "react";
 import { FaRegCopy } from "react-icons/fa";
+import { MdModeEdit } from "react-icons/md";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "./components/ui/button";
@@ -16,6 +17,16 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "./components/ui/input";
 import logo from "@/assets/logo.png";
 import Lottie from "react-lottie";
 import animationData from "./lotties/listening.json";
@@ -30,10 +41,6 @@ function App() {
     ""
   );
   const { messages, setMessages } = useMessages();
-
-  useEffect(() => {
-    setMessages(JSON.parse(localStorage.getItem("messages") || "[]"));
-  }, [localStorage]);
 
   useEffect(() => {
     if (generatedWebhookId) {
@@ -65,11 +72,25 @@ function App() {
     });
   };
 
-  const handleGenerateNewWebhookId = () => {
-    setGeneratedWebhookId(crypto.randomUUID());
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [customId, setCustomId] = useState("");
+
+  const handleSetCustomWebhookId = () => {
+    const trimmed = customId.trim();
+    if (!trimmed) return;
+    setGeneratedWebhookId(trimmed);
     localStorage.setItem("messages", JSON.stringify([]));
     setMessages([]);
-    navigate(`/${generatedWebhookId}/`);
+    navigate(`/${trimmed}/`);
+    setIsEditOpen(false);
+  };
+
+  const handleGenerateNewWebhookId = () => {
+    const newId = crypto.randomUUID();
+    setGeneratedWebhookId(newId);
+    localStorage.setItem("messages", JSON.stringify([]));
+    setMessages([]);
+    navigate(`/${newId}/`);
   };
 
   return (
@@ -85,6 +106,60 @@ function App() {
             {import.meta.env.VITE_SERVER_URL}/{generatedWebhookId}
             <FaRegCopy />
           </span>
+          <Dialog
+            open={isEditOpen}
+            onOpenChange={(open) => {
+              setIsEditOpen(open);
+              if (open) setCustomId(generatedWebhookId || "");
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+              >
+                <MdModeEdit />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>Set custom webhook</DialogTitle>
+                <DialogDescription>
+                  Set a custom path for your webhook URL. This will clear
+                  existing messages.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex items-center gap-0">
+                <span className="bg-secondary px-3 py-2 rounded-l-md text-sm text-muted-foreground whitespace-nowrap border border-r-0 border-input">
+                  {import.meta.env.VITE_SERVER_URL}/
+                </span>
+                <Input
+                  className="rounded-l-none"
+                  value={customId}
+                  onChange={(e) => setCustomId(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSetCustomWebhookId();
+                  }}
+                  placeholder="my-webhook"
+                  autoFocus
+                />
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsEditOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSetCustomWebhookId}
+                  disabled={!customId.trim()}
+                >
+                  Save
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="outline" className="flex items-center">

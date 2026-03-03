@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { WebhookMessage } from "@/types/webhook";
 
@@ -12,6 +12,7 @@ export const useWebSocket = ({ webhookId, onMessage }: UseWebSocketProps) => {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasConnectedRef = useRef(false);
+  const [connected, setConnected] = useState(false);
 
   useEffect(() => {
     onMessageRef.current = onMessage;
@@ -34,7 +35,13 @@ export const useWebSocket = ({ webhookId, onMessage }: UseWebSocketProps) => {
       wsRef.current = ws;
 
       ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+        let data;
+        try {
+          data = JSON.parse(event.data);
+        } catch (e) {
+          console.error("Failed to parse WebSocket message:", e);
+          return;
+        }
         onMessageRef.current(data);
 
         toast("New Message", {
@@ -46,19 +53,21 @@ export const useWebSocket = ({ webhookId, onMessage }: UseWebSocketProps) => {
       };
 
       ws.onclose = (event) => {
+        setConnected(false);
         if (event.code !== 1000 && hasConnectedRef.current) {
-          toast.error("Connection lost. Reconnecting...", {
-            style: {
-              background: "#ff0000",
-            },
-          });
-
           reconnectTimeoutRef.current = setTimeout(createWebSocket, 10000);
         }
       };
 
       ws.onopen = () => {
-        if (!hasConnectedRef.current) {
+        setConnected(true);
+        if (hasConnectedRef.current) {
+          toast.success("Reconnected", {
+            style: {
+              background: "#4BB543",
+            },
+          });
+        } else {
           toast.success("WebSocket connected", {
             style: {
               background: "#4BB543",
@@ -78,11 +87,14 @@ export const useWebSocket = ({ webhookId, onMessage }: UseWebSocketProps) => {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
-      if (ws && ws.readyState === WebSocket.OPEN) {
+      if (ws) {
         ws.close(1000, "Component unmounting");
         wsRef.current = null;
         hasConnectedRef.current = false;
       }
+      setConnected(false);
     };
   }, [webhookId]);
+
+  return { connected };
 };

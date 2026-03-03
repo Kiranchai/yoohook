@@ -12,9 +12,11 @@ app.use(express.urlencoded({ extended: true }));
 app.use(
   express.raw({
     type: ["application/octet-stream", "application/xml", "text/xml"],
-  })
+  }),
 );
-app.use(express.text());
+app.use(
+  express.text({ type: ["text/*", "application/yaml", "application/x-yaml"] }),
+);
 app.use(cors());
 
 const upload = multer();
@@ -36,6 +38,11 @@ wss.on("connection", (ws, request) => {
   clients[userId] = ws;
 
   ws.on("close", () => {
+    delete clients[userId];
+  });
+
+  ws.on("error", (err) => {
+    console.error(`WebSocket error for ${userId}:`, err);
     delete clients[userId];
   });
 });
@@ -72,18 +79,23 @@ app.post("/set-response/:webhookId/:method*", (req, res) => {
       return res.status(400).json({ error: "Invalid custom response format" });
     }
 
+    const statusCode = Number(response.statusCode);
+    if (!Number.isInteger(statusCode) || statusCode < 100 || statusCode > 599) {
+      return res
+        .status(400)
+        .json({
+          error: "Invalid status code. Must be an integer between 100 and 599.",
+        });
+    }
+
     const customResponse = {
       body: response.body,
-      statusCode: Number(response.statusCode),
+      statusCode,
       headers: response.headers,
       bodyFormat: response.bodyFormat || "json",
     };
 
     const fullPath = req.params[0].length === 0 ? "/" : req.params[0];
-
-    if (!customResponse) {
-      return res.status(400).json({ error: "No custom response provided" });
-    }
 
     if (!customResponses[webhookId]) {
       customResponses[webhookId] = {};
@@ -95,7 +107,7 @@ app.post("/set-response/:webhookId/:method*", (req, res) => {
     customResponses[webhookId][fullPath][method] = customResponse;
 
     console.log(
-      `Custom response set for ${method} ${fullPath} (format: ${customResponse.bodyFormat})`
+      `Custom response set for ${method} ${fullPath} (format: ${customResponse.bodyFormat})`,
     );
     console.log("Stored custom response body:", customResponse.body);
 
@@ -103,6 +115,44 @@ app.post("/set-response/:webhookId/:method*", (req, res) => {
       message: "Custom response set successfully",
       path: fullPath,
     });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: "An error occurred" });
+  }
+});
+
+app.delete("/delete-response/:webhookId/:method*", (req, res) => {
+  try {
+    const { webhookId, method } = req.params;
+    const fullPath = req.params[0].length === 0 ? "/" : req.params[0];
+
+    if (customResponses[webhookId]?.[fullPath]?.[method]) {
+      delete customResponses[webhookId][fullPath][method];
+      if (Object.keys(customResponses[webhookId][fullPath]).length === 0) {
+        delete customResponses[webhookId][fullPath];
+      }
+      if (Object.keys(customResponses[webhookId]).length === 0) {
+        delete customResponses[webhookId];
+      }
+      console.log(`Deleted custom response for ${method} ${fullPath}`);
+      return res.json({ message: "Custom response deleted", path: fullPath });
+    }
+
+    return res.status(404).json({ error: "Custom response not found" });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: "An error occurred" });
+  }
+});
+
+app.delete("/delete-responses/:webhookId", (req, res) => {
+  try {
+    const { webhookId } = req.params;
+    if (customResponses[webhookId]) {
+      delete customResponses[webhookId];
+      console.log(`Deleted all custom responses for ${webhookId}`);
+    }
+    return res.json({ message: "All custom responses deleted" });
   } catch (err) {
     console.error(err);
     res.status(400).json({ error: "An error occurred" });
@@ -142,7 +192,7 @@ app.all("/:webhookId*", upload.any(), function (req, res, next) {
     ) {
       const base64Credentials = req.headers.authorization.split(" ")[1];
       const credentials = Buffer.from(base64Credentials, "base64").toString(
-        "ascii"
+        "ascii",
       );
       const [username, password] = credentials.split(":");
       payload["headers"] = {
@@ -168,7 +218,7 @@ app.all("/:webhookId*", upload.any(), function (req, res, next) {
     }
 
     // Send data to connected WebSocket client if available
-    if (clients[webhookId]) {
+    if (clients[webhookId] && clients[webhookId].readyState === 1) {
       clients[webhookId].send(JSON.stringify(payload));
     }
 
@@ -179,18 +229,18 @@ app.all("/:webhookId*", upload.any(), function (req, res, next) {
     }
 
     console.log(
-      `Looking for custom response: ${webhookId} -> ${fullPath} -> ${method}`
+      `Looking for custom response: ${webhookId} -> ${fullPath} -> ${method}`,
     );
     console.log("Available webhookIds:", Object.keys(customResponses));
     if (customResponses[webhookId]) {
       console.log(
         "Available paths for webhookId:",
-        Object.keys(customResponses[webhookId])
+        Object.keys(customResponses[webhookId]),
       );
       if (customResponses[webhookId][fullPath]) {
         console.log(
           "Available methods for path:",
-          Object.keys(customResponses[webhookId][fullPath])
+          Object.keys(customResponses[webhookId][fullPath]),
         );
       }
     }
@@ -201,31 +251,40 @@ app.all("/:webhookId*", upload.any(), function (req, res, next) {
       console.log(
         `FOUND custom response for ${method} ${fullPath} (format: ${
           customResponse.bodyFormat || "json"
-        })`
+        })`,
       );
       console.log("Sending custom body:", customResponse.body);
 
       res.set(customResponse.headers);
 
-      if (customResponse.bodyFormat === "xml") {
-        if (
-          !customResponse.headers["Content-Type"] &&
-          !customResponse.headers["content-type"]
-        ) {
-          res.set("Content-Type", "application/xml");
-        }
-        console.log("Sending XML response");
-        return res.status(customResponse.statusCode).send(customResponse.body);
-      } else {
-        if (
-          !customResponse.headers["Content-Type"] &&
-          !customResponse.headers["content-type"]
-        ) {
-          res.set("Content-Type", "application/json");
-        }
-        console.log("Sending JSON response");
-        return res.status(customResponse.statusCode).json(customResponse.body);
+      const contentTypeMap = {
+        json: "application/json",
+        xml: "application/xml",
+        text: "text/plain",
+        html: "text/html",
+        yaml: "application/yaml",
+        "form-urlencoded": "application/x-www-form-urlencoded",
+      };
+
+      const bodyFormat = customResponse.bodyFormat || "json";
+
+      if (
+        bodyFormat !== "raw" &&
+        contentTypeMap[bodyFormat] &&
+        !customResponse.headers["Content-Type"] &&
+        !customResponse.headers["content-type"]
+      ) {
+        res.set("Content-Type", contentTypeMap[bodyFormat]);
       }
+
+      console.log(`Sending ${bodyFormat} response`);
+
+      const responseBody =
+        bodyFormat === "json" && typeof customResponse.body === "object"
+          ? JSON.stringify(customResponse.body)
+          : customResponse.body;
+
+      return res.status(customResponse.statusCode).send(responseBody);
     } else {
       console.log(`NO custom response found for ${method} ${fullPath}`);
     }
