@@ -7,7 +7,18 @@ import multer from "multer";
 const app = express();
 const port = 3000;
 
-app.use(express.json());
+// Parse JSON, but keep malformed JSON bodies as raw text instead of rejecting
+// the request, so the inspector can show what was actually sent.
+const jsonParser = express.json();
+app.use((req, res, next) => {
+  jsonParser(req, res, (err) => {
+    if (err && err.type === "entity.parse.failed") {
+      req.body = err.body;
+      return next();
+    }
+    next(err);
+  });
+});
 app.use(express.urlencoded({ extended: true }));
 app.use(
   express.raw({
@@ -159,7 +170,14 @@ app.delete("/delete-responses/:webhookId", (req, res) => {
   }
 });
 
+const toHeaderCase = (name) =>
+  name
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("-");
+
 app.all("/:webhookId*", upload.any(), function (req, res, next) {
+  const startedAt = Date.now();
   let body = req.body;
 
   if (req.is("application/xml") || req.is("text/xml")) {
@@ -217,10 +235,27 @@ app.all("/:webhookId*", upload.any(), function (req, res, next) {
       });
     }
 
-    // Send data to connected WebSocket client if available
-    if (clients[webhookId] && clients[webhookId].readyState === 1) {
-      clients[webhookId].send(JSON.stringify(payload));
-    }
+    // What we answered with; filled in below and sent to the inspector together
+    // with the request once the response has been written.
+    const responseInfo = { custom: false, echo: true, body: null, bodyFormat: "json" };
+
+    res.on("finish", () => {
+      payload.response = {
+        status: res.statusCode,
+        headers: Object.fromEntries(
+          Object.entries(res.getHeaders()).map(([key, value]) => [
+            toHeaderCase(key),
+            Array.isArray(value) ? value.join(", ") : String(value),
+          ]),
+        ),
+        ...responseInfo,
+        durationMs: Date.now() - startedAt,
+      };
+
+      if (clients[webhookId] && clients[webhookId].readyState === 1) {
+        clients[webhookId].send(JSON.stringify(payload));
+      }
+    });
 
     let fullPath = path;
 
@@ -283,6 +318,11 @@ app.all("/:webhookId*", upload.any(), function (req, res, next) {
         bodyFormat === "json" && typeof customResponse.body === "object"
           ? JSON.stringify(customResponse.body)
           : customResponse.body;
+
+      responseInfo.custom = true;
+      responseInfo.echo = false;
+      responseInfo.body = customResponse.body;
+      responseInfo.bodyFormat = bodyFormat;
 
       return res.status(customResponse.statusCode).send(responseBody);
     } else {

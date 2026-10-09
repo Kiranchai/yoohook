@@ -1,22 +1,34 @@
+/** What the backend answered the webhook sender with. */
+export interface WebhookResponse {
+  status: number;
+  headers: Record<string, string>;
+  /** True when a custom response configured in yoohook was used. */
+  custom: boolean;
+  /** True for the default reply, which echoes the request back as `payload`. */
+  echo?: boolean;
+  body?: unknown;
+  bodyFormat?: string;
+  durationMs?: number;
+}
+
+/** Node `Buffer` serialised by JSON.stringify (raw/binary bodies). */
+export interface BufferBody {
+  type: "Buffer";
+  data: number[];
+}
+
 export interface WebhookMessage {
   headers: Record<string, string>;
-  body: Record<string, any>;
+  body: unknown;
   host: string;
   path: string;
+  fullPath?: string;
   method: string;
-  time: string;
+  time: number | string;
   id: string;
   protocol: string;
   queryParams: Record<string, string>;
-  formData: Record<string, string>;
+  formData: Record<string, unknown>;
+  /** Present when the backend reports its response (newer backends). */
+  response?: WebhookResponse;
 }
-
-export const methodColors: { [key: string]: string } = {
-  GET: "#5bc0de",
-  POST: "#5cb85c",
-  PUT: "#f0ad4e",
-  PATCH: "#607b59",
-  DELETE: "#a71b17",
-  HEAD: "#1f5b8f",
-  OPTIONS: "#777",
-};

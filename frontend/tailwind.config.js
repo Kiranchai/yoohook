@@ -1,59 +1,72 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  darkMode: ["class"],
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
-      borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+      fontFamily: {
+        sans: ['"IBM Plex Sans"', '"Helvetica Neue"', "Arial", "sans-serif"],
+        mono: ['"IBM Plex Mono"', "ui-monospace", "Menlo", "monospace"],
       },
+      // Carbon Gray 100 theme tokens
       colors: {
-        background: "hsl(var(--background))",
-        foreground: "var(--foreground)",
-        foregroundDarker: "var(--foregroundDarker)",
-        card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
+        background: "#161616",
+        layer: {
+          1: "#262626",
+          2: "#393939",
+          hover1: "#333333",
+          hover2: "#474747",
+          active: "#525252",
         },
-        popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
+        border: {
+          subtle: "#393939",
+          strong: "#6f6f6f",
+          field: "#8d8d8d",
+          interactive: "#4589ff",
         },
-        primary: {
-          DEFAULT: "var(--primary)",
-          foreground: "hsl(var(--primary-foreground))",
+        text: {
+          primary: "#f4f4f4",
+          secondary: "#c6c6c6",
+          helper: "#a8a8a8",
+          placeholder: "#6f6f6f",
+          inverse: "#161616",
         },
-        secondary: {
-          DEFAULT: "var(--secondary)",
-          foreground: "hsl(var(--secondary-foreground))",
+        link: { DEFAULT: "#78a9ff", hover: "#a6c8ff" },
+        btn: {
+          primary: "#0f62fe",
+          "primary-hover": "#0050e6",
+          "primary-active": "#002d9c",
+          secondary: "#6f6f6f",
+          "secondary-hover": "#606060",
+          danger: "#da1e28",
+          "danger-hover": "#b81921",
+          "danger-active": "#750e13",
         },
-        muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
+        support: {
+          success: "#24a148",
+          "success-text": "#42be65",
+          error: "#fa4d56",
+          warning: "#f1c21b",
+          info: "#0043ce",
         },
-        accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
-        },
-        destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
-        },
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        chart: {
-          1: "hsl(var(--chart-1))",
-          2: "hsl(var(--chart-2))",
-          3: "hsl(var(--chart-3))",
-          4: "hsl(var(--chart-4))",
-          5: "hsl(var(--chart-5))",
-        },
-        navBg: "var(--nav-bg)",
+        inverse: "#f4f4f4",
+      },
+      fontSize: {
+        label: ["12px", { lineHeight: "16px", letterSpacing: "0.32px" }],
+        body: ["14px", { lineHeight: "20px", letterSpacing: "0.16px" }],
+        compact: ["14px", { lineHeight: "18px", letterSpacing: "0.16px" }],
+      },
+      transitionTimingFunction: {
+        productive: "cubic-bezier(0.2, 0, 0.38, 0.9)",
+        entrance: "cubic-bezier(0, 0, 0.38, 0.9)",
+        exit: "cubic-bezier(0.2, 0, 1, 0.9)",
+        expressive: "cubic-bezier(0.4, 0.14, 0.3, 1)",
+      },
+      transitionDuration: {
+        70: "70ms",
+        110: "110ms",
+        240: "240ms",
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [],
 };
