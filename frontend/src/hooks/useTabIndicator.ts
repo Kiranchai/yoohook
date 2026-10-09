@@ -2,8 +2,20 @@ import { useEffect } from "react";
 import { ConnectionStatus } from "@/hooks/useWebSocket";
 
 const BASE_TITLE = "yoohook · Inspector";
+const FAVICON = "/favicon.ico";
 
-function drawFavicon(badge: string | null) {
+let baseIcon: Promise<HTMLImageElement> | null = null;
+
+const loadBaseIcon = () =>
+  (baseIcon ??= new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = FAVICON;
+  }));
+
+/** The regular favicon with a coloured square in its top-right corner. */
+async function drawBadgedFavicon(badge: string) {
   const size = 64;
   const canvas = document.createElement("canvas");
   canvas.width = size;
@@ -11,20 +23,11 @@ function drawFavicon(badge: string | null) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
 
-  ctx.fillStyle = "#f4f4f4";
-  ctx.fillRect(0, 0, size, size);
+  ctx.drawImage(await loadBaseIcon(), 0, 0, size, size);
   ctx.fillStyle = "#161616";
-  ctx.font = '600 44px "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif';
-  ctx.textAlign = "center";
-  ctx.textBaseline = "alphabetic";
-  ctx.fillText("y", size / 2, 46);
-
-  if (badge) {
-    ctx.fillStyle = "#161616";
-    ctx.fillRect(size - 28, 0, 28, 28);
-    ctx.fillStyle = badge;
-    ctx.fillRect(size - 24, 0, 24, 24);
-  }
+  ctx.fillRect(size - 30, 0, 30, 30);
+  ctx.fillStyle = badge;
+  ctx.fillRect(size - 26, 0, 26, 26);
   return canvas.toDataURL("image/png");
 }
 
@@ -35,7 +38,7 @@ function setFavicon(href: string) {
     link.rel = "icon";
     document.head.appendChild(link);
   }
-  link.type = href.startsWith("data:") ? "image/png" : "image/svg+xml";
+  link.type = href.startsWith("data:") ? "image/png" : "image/x-icon";
   link.href = href;
 }
 
@@ -46,7 +49,17 @@ export function useTabIndicator(unreadCount: number, status: ConnectionStatus) {
     else document.title = unreadCount > 0 ? `(${unreadCount}) ${BASE_TITLE}` : BASE_TITLE;
 
     const badge = status === "disconnected" ? "#da1e28" : unreadCount > 0 ? "#0f62fe" : null;
-    const icon = badge ? drawFavicon(badge) : null;
-    setFavicon(icon ?? "/favicon.svg");
+    if (!badge) {
+      setFavicon(FAVICON);
+      return;
+    }
+
+    let cancelled = false;
+    drawBadgedFavicon(badge)
+      .then((icon) => !cancelled && setFavicon(icon ?? FAVICON))
+      .catch(() => !cancelled && setFavicon(FAVICON));
+    return () => {
+      cancelled = true;
+    };
   }, [unreadCount, status]);
 }
