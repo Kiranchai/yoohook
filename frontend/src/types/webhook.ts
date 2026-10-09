@@ -15,6 +15,9 @@ export interface WebhookResponse {
 export interface BufferBody {
   type: "Buffer";
   data: number[];
+  /** Full size in bytes when the backend forwarded only the first part. */
+  size?: number;
+  truncated?: boolean;
 }
 
 export interface WebhookMessage {
@@ -29,6 +32,8 @@ export interface WebhookMessage {
   protocol: string;
   queryParams: Record<string, string>;
   formData: Record<string, unknown>;
+  /** Decoded `Authorization: Basic …` credentials, when sent. */
+  basicAuth?: { username: string; password: string };
   /** Present when the backend reports its response (newer backends). */
   response?: WebhookResponse;
 }

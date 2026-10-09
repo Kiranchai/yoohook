@@ -29,7 +29,12 @@ export const MessagesProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [unread, setUnread] = useState<Set<string>>(() => new Set(readJson<string[]>("unread", [])));
 
   useEffect(() => {
-    localStorage.setItem("messages", JSON.stringify(messages));
+    try {
+      localStorage.setItem("messages", JSON.stringify(messages));
+    } catch (e) {
+      // Storage full (large bodies): keep the list in memory for this session.
+      console.warn("Could not save requests to localStorage:", e);
+    }
   }, [messages]);
 
   useEffect(() => {

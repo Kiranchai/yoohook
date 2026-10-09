@@ -48,7 +48,7 @@ export default function RequestDetails({
   const bodyView = useMemo(() => describeBody(message, true), [message]);
   const bodyCount =
     bodyView.kind === "binary"
-      ? formatBytes(bodyView.bytes.length)
+      ? formatBytes(bodyView.size)
       : bodyView.kind === "text"
         ? formatBytes(bodyView.bytes)
         : "";
@@ -150,7 +150,7 @@ export default function RequestDetails({
       </div>
 
       {tab === "body" && <BodyPanel message={message} pretty={pretty} onPrettyChange={setPretty} />}
-      {tab === "headers" && <HeadersPanel headers={message.headers} />}
+      {tab === "headers" && <HeadersPanel headers={message.headers} basicAuth={message.basicAuth} />}
       {tab === "query" && (
         <KvSection
           rows={Object.entries(message.queryParams ?? {}).map(([k, v]) => [k, String(v)])}

@@ -42,7 +42,7 @@ export default function BodyPanel({
   };
 
   let meta = "0 bytes";
-  if (view.kind === "binary") meta = formatBytes(view.bytes.length);
+  if (view.kind === "binary") meta = formatBytes(view.size);
   if (view.kind === "text") {
     meta = `${view.wrap ? "1 line" : `${view.lines.length.toLocaleString("en-US")} lines`} · ${formatBytes(view.bytes)}`;
   }
@@ -116,15 +116,20 @@ export default function BodyPanel({
               <div className="flex flex-col gap-1">
                 <span className="text-base leading-[22px]">Binary body</span>
                 <span className="font-mono text-label text-text-secondary">
-                  {view.contentType} · {formatBytes(view.bytes.length)}
+                  {view.contentType} · {formatBytes(view.size)}
                 </span>
+                {view.truncated && (
+                  <span className="text-label text-text-helper">
+                    Only the first {formatBytes(view.bytes.length)} reached the inspector.
+                  </span>
+                )}
               </div>
               <button
                 type="button"
                 onClick={() => download(view.bytes, view.contentType)}
                 className="btn btn-tertiary ml-auto h-10 gap-8 px-4"
               >
-                Download file
+                {view.truncated ? "Download first part" : "Download file"}
                 <Icon name="download" />
               </button>
             </div>

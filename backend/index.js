@@ -7,9 +7,19 @@ import multer from "multer";
 const app = express();
 const port = 3000;
 
-// Parse JSON, but keep malformed JSON bodies as raw text instead of rejecting
-// the request, so the inspector can show what was actually sent.
-const jsonParser = express.json();
+// Webhook payloads (GitHub, Shopify, …) regularly exceed the 100 kB default.
+const BODY_LIMIT = "10mb";
+// Binary bodies are forwarded to the inspector only up to this size.
+const MAX_FORWARDED_BINARY = 1024 * 1024;
+const HEARTBEAT_MS = 30_000;
+
+// Parse JSON (including `application/*+json`, e.g. CloudEvents), but keep
+// malformed JSON bodies as raw text instead of rejecting the request, so the
+// inspector can show what was actually sent.
+const jsonParser = express.json({
+  limit: BODY_LIMIT,
+  type: ["application/json", "application/*+json"],
+});
 app.use((req, res, next) => {
   jsonParser(req, res, (err) => {
     if (err && err.type === "entity.parse.failed") {
@@ -19,44 +29,94 @@ app.use((req, res, next) => {
     next(err);
   });
 });
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
 app.use(
-  express.raw({
-    type: ["application/octet-stream", "application/xml", "text/xml"],
+  express.text({
+    limit: BODY_LIMIT,
+    type: ["text/*", "application/yaml", "application/x-yaml"],
   }),
 );
+// Everything else (XML, octet-stream, images, PDFs, protobuf…) is kept as raw
+// bytes. Multipart is left to multer in the webhook route.
 app.use(
-  express.text({ type: ["text/*", "application/yaml", "application/x-yaml"] }),
+  express.raw({
+    limit: BODY_LIMIT,
+    type: (req) => !req.is("multipart/*") && !!req.headers["content-type"],
+  }),
 );
 app.use(cors());
 
 const upload = multer();
 const wss = new WebSocketServer({ noServer: true });
 
-const clients = {};
+// webhookId -> every open inspector socket for it (several tabs may watch the
+// same webhook, and a reconnecting tab briefly has two sockets).
+const clients = new Map();
 
 const customResponses = {};
 
-wss.on("connection", (ws, request) => {
-  const userId = request.url?.split("/").pop();
+const addClient = (webhookId, ws) => {
+  if (!clients.has(webhookId)) clients.set(webhookId, new Set());
+  clients.get(webhookId).add(ws);
+};
 
-  if (!userId) {
-    console.error("Invalid userId");
-    ws.close();
+const removeClient = (webhookId, ws) => {
+  const sockets = clients.get(webhookId);
+  if (!sockets) return;
+  sockets.delete(ws);
+  if (sockets.size === 0) clients.delete(webhookId);
+};
+
+const broadcast = (webhookId, message) => {
+  const sockets = clients.get(webhookId);
+  if (!sockets) return;
+  const data = JSON.stringify(message);
+  for (const ws of sockets) {
+    if (ws.readyState === ws.OPEN) ws.send(data);
+  }
+};
+
+wss.on("connection", (ws, request) => {
+  const webhookId = new URL(request.url ?? "", "http://localhost").pathname
+    .split("/")
+    .filter(Boolean)
+    .pop();
+
+  if (!webhookId) {
+    console.error("WebSocket connection without a webhook id");
+    ws.close(1008, "Missing webhook id");
     return;
   }
 
-  clients[userId] = ws;
+  addClient(webhookId, ws);
+  ws.isAlive = true;
 
-  ws.on("close", () => {
-    delete clients[userId];
+  ws.on("pong", () => {
+    ws.isAlive = true;
   });
+
+  ws.on("close", () => removeClient(webhookId, ws));
 
   ws.on("error", (err) => {
-    console.error(`WebSocket error for ${userId}:`, err);
-    delete clients[userId];
+    console.error(`WebSocket error for ${webhookId}:`, err.message);
+    removeClient(webhookId, ws);
   });
 });
+
+// Proxies drop idle connections silently; ping every socket and drop the ones
+// that stopped answering, so neither side keeps a dead connection around.
+const heartbeat = setInterval(() => {
+  for (const ws of wss.clients) {
+    if (!ws.isAlive) {
+      ws.terminate();
+      continue;
+    }
+    ws.isAlive = false;
+    ws.ping();
+  }
+}, HEARTBEAT_MS);
+
+wss.on("close", () => clearInterval(heartbeat));
 
 const server = app.listen(port, () => {
   console.log(`Example app listening on port ${port}`);
@@ -180,8 +240,19 @@ app.all("/:webhookId*", upload.any(), function (req, res, next) {
   const startedAt = Date.now();
   let body = req.body;
 
-  if (req.is("application/xml") || req.is("text/xml")) {
-    body = Buffer.from(req.body, "utf-8").toString();
+  if (Buffer.isBuffer(body)) {
+    if (req.is(["application/xml", "text/xml", "application/*+xml"])) {
+      body = body.toString("utf-8");
+    } else {
+      // Serialises like a Buffer ({ type, data }) plus the real size, capped
+      // so a large upload can't flood the WebSocket or the browser's storage.
+      body = {
+        type: "Buffer",
+        data: Array.from(body.subarray(0, MAX_FORWARDED_BINARY)),
+        size: body.length,
+        truncated: body.length > MAX_FORWARDED_BINARY,
+      };
+    }
   }
 
   try {
@@ -203,21 +274,21 @@ app.all("/:webhookId*", upload.any(), function (req, res, next) {
       formData: {},
     };
 
-    //Check for Basic auth
-    if (
-      req.headers.authorization &&
-      req.headers.authorization.startsWith("Basic ")
-    ) {
-      const base64Credentials = req.headers.authorization.split(" ")[1];
-      const credentials = Buffer.from(base64Credentials, "base64").toString(
-        "ascii",
-      );
-      const [username, password] = credentials.split(":");
-      payload["headers"] = {
-        ...payload["headers"],
-        base64username: username,
-        base64password: password,
-      };
+    // Decode Basic auth into its own field, so the headers stay exactly as sent.
+    const authorization = req.headers.authorization;
+    if (authorization && /^Basic /i.test(authorization)) {
+      const credentials = Buffer.from(
+        authorization.slice(6).trim(),
+        "base64",
+      ).toString("utf-8");
+      const separator = credentials.indexOf(":");
+      payload.basicAuth =
+        separator === -1
+          ? { username: credentials, password: "" }
+          : {
+              username: credentials.slice(0, separator),
+              password: credentials.slice(separator + 1),
+            };
     }
 
     if (req.is("multipart/form-data")) {
@@ -252,9 +323,7 @@ app.all("/:webhookId*", upload.any(), function (req, res, next) {
         durationMs: Date.now() - startedAt,
       };
 
-      if (clients[webhookId] && clients[webhookId].readyState === 1) {
-        clients[webhookId].send(JSON.stringify(payload));
-      }
+      broadcast(webhookId, payload);
     });
 
     let fullPath = path;
@@ -334,4 +403,20 @@ app.all("/:webhookId*", upload.any(), function (req, res, next) {
     console.error(err);
     res.status(400).json({ error: "An error occurred" });
   }
+});
+
+// Body-parser errors (e.g. 413 for bodies over BODY_LIMIT) as JSON instead of
+// Express's default HTML page with a stack trace.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  const status = err.status || err.statusCode || 500;
+  if (status >= 500) console.error(err);
+  res.status(status).json({
+    error:
+      status === 413
+        ? `Payload too large. The limit is ${BODY_LIMIT}.`
+        : status >= 500
+          ? "An error occurred"
+          : err.message,
+  });
 });

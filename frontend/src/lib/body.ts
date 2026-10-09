@@ -128,7 +128,7 @@ const TEXTUAL = /json|xml|text|yaml|html|javascript|x-www-form-urlencoded|csv/;
 
 export type BodyView =
   | { kind: "none" }
-  | { kind: "binary"; bytes: number[]; contentType: string }
+  | { kind: "binary"; bytes: number[]; size: number; truncated: boolean; contentType: string }
   | {
       kind: "text";
       lines: CodeLine[];
@@ -150,7 +150,13 @@ export function describeBody(message: WebhookMessage, pretty: boolean): BodyView
     if (contentType && TEXTUAL.test(contentType)) {
       return describeText(new TextDecoder().decode(new Uint8Array(body.data)), contentType, pretty);
     }
-    return { kind: "binary", bytes: body.data, contentType: contentType || "application/octet-stream" };
+    return {
+      kind: "binary",
+      bytes: body.data,
+      size: body.size ?? body.data.length,
+      truncated: !!body.truncated,
+      contentType: contentType || "application/octet-stream",
+    };
   }
 
   if (isEmptyBody(body)) return { kind: "none" };

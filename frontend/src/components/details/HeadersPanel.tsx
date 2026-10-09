@@ -5,11 +5,26 @@ import { isServerHeader } from "@/lib/http";
 
 const FILTER_THRESHOLD = 10;
 
-export default function HeadersPanel({ headers }: { headers: Record<string, string> }) {
+// Older backends mixed decoded Basic auth into the headers under these names.
+const LEGACY_AUTH = ["base64username", "base64password"];
+
+export default function HeadersPanel({
+  headers,
+  basicAuth,
+}: {
+  headers: Record<string, string>;
+  basicAuth?: { username: string; password: string };
+}) {
   const [query, setQuery] = useState("");
   const [serverOpen, setServerOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  const entries = Object.entries(headers ?? {});
+  const entries = Object.entries(headers ?? {}).filter(([k]) => !LEGACY_AUTH.includes(k));
+  const auth =
+    basicAuth ??
+    (headers?.base64username !== undefined
+      ? { username: headers.base64username, password: headers.base64password ?? "" }
+      : undefined);
   const own = entries.filter(([k]) => !isServerHeader(k));
   const server = entries.filter(([k]) => isServerHeader(k));
   const q = query.trim().toLowerCase();
@@ -41,6 +56,31 @@ export default function HeadersPanel({ headers }: { headers: Record<string, stri
           <EmptyNote>{own.length ? `No headers match “${query}”.` : "This request has no headers."}</EmptyNote>
         )}
       </div>
+
+      {auth && (
+        <div className="flex flex-col gap-2">
+          <h3 className="m-0 text-compact font-semibold">Basic auth (decoded)</h3>
+          <KeyValueTable
+            keyLabel="Credential"
+            rows={[
+              ["Username", auth.username || "—"],
+              [
+                "Password",
+                <span className="flex items-center gap-4">
+                  <span>{showPassword ? auth.password || "—" : "•".repeat(Math.max(auth.password.length, 8))}</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="bg-transparent p-0 font-sans text-compact text-link hover:underline"
+                  >
+                    {showPassword ? "Hide" : "Show"}
+                  </button>
+                </span>,
+              ],
+            ]}
+          />
+        </div>
+      )}
 
       {server.length > 0 && (
         <div className="border-y border-border-subtle">
