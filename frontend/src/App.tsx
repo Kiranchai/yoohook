@@ -1,214 +1,219 @@
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import Dashboard from "./components/Dashboard";
-import { useEffect, useState } from "react";
-import { FaRegCopy } from "react-icons/fa";
-import { MdModeEdit } from "react-icons/md";
-import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
-import { Button } from "./components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "./components/ui/input";
-import logo from "@/assets/logo.png";
-import Lottie from "react-lottie";
-import animationData from "./lotties/listening.json";
-import { useMessages } from "./providers/MessagesProvider";
-import { GiPerspectiveDiceSixFacesRandom } from "react-icons/gi";
-import CustomResponsesDialog from "./components/CustomResponsesDialog";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Modal } from "@/components/ui/modal";
+import AppHeader from "@/components/AppHeader";
+import UrlBar from "@/components/UrlBar";
+import ConnectionNotice from "@/components/ConnectionNotice";
+import EmptyState from "@/components/EmptyState";
+import RequestList from "@/components/RequestList";
+import ResizableSplit from "@/components/ResizableSplit";
+import RequestDetails from "@/components/details/RequestDetails";
+import CustomResponsesDialog, { EndpointRef } from "@/components/responses/CustomResponsesDialog";
+import { useMessages } from "@/providers/MessagesProvider";
+import { useWebSocket } from "@/hooks/useWebSocket";
+import { useTabIndicator } from "@/hooks/useTabIndicator";
+import { SERVER_URL, formatTime, queryString, requestPath } from "@/lib/http";
+import { notify } from "@/lib/notify";
+import { WebhookMessage } from "@/types/webhook";
+
+type Confirm = "clear" | "newUrl" | "editPath" | null;
 
 function App() {
-  const { webhookId, messageId } = useParams();
+  const { webhookId: routeId, messageId } = useParams();
   const navigate = useNavigate();
-  const [generatedWebhookId, setGeneratedWebhookId] = useState<string | null>(
-    ""
+  const { messages, addMessage, removeMessage, clearMessages, unread, markRead, markAllRead } = useMessages();
+
+  const [webhookId, setWebhookId] = useState(
+    () => routeId || localStorage.getItem("webhookId") || crypto.randomUUID(),
   );
-  const { messages, setMessages } = useMessages();
+  const [freshId, setFreshId] = useState<string | null>(null);
+  const freshTimer = useRef<ReturnType<typeof setTimeout>>();
+  const [confirm, setConfirm] = useState<Confirm>(null);
+  const [customPath, setCustomPath] = useState("");
+  const [responsesOpen, setResponsesOpen] = useState(false);
+  const [responsesTarget, setResponsesTarget] = useState<EndpointRef | null>(null);
+
+  // A webhook id in the URL wins over the remembered one.
+  useEffect(() => {
+    if (routeId && routeId !== webhookId) setWebhookId(routeId);
+  }, [routeId, webhookId]);
 
   useEffect(() => {
-    if (generatedWebhookId) {
-      navigate(`/${generatedWebhookId}/${messageId ? messageId : ""}`);
-      localStorage.setItem("webhookId", generatedWebhookId);
+    localStorage.setItem("webhookId", webhookId);
+    if (!routeId) navigate(`/${webhookId}/${messageId ?? ""}`, { replace: true });
+  }, [webhookId, routeId, messageId, navigate]);
+
+  const selected = messages.find((m) => m.id === messageId) ?? messages[0];
+
+  // Pin the selection in the URL so new arrivals don't take over the details pane.
+  useEffect(() => {
+    if (routeId && selected && selected.id !== messageId) {
+      navigate(`/${webhookId}/${selected.id}`, { replace: true });
     }
-  }, [generatedWebhookId]);
+  }, [routeId, selected, messageId, webhookId, navigate]);
 
   useEffect(() => {
-    const savedWebhookId = localStorage.getItem("webhookId");
+    if (selected) markRead(selected.id);
+  }, [selected, markRead]);
 
-    if (!webhookId && !savedWebhookId) {
-      setGeneratedWebhookId(crypto.randomUUID());
-    } else {
-      setGeneratedWebhookId(webhookId || savedWebhookId);
-    }
+  useEffect(() => () => clearTimeout(freshTimer.current), []);
+
+  const handleMessage = useCallback(
+    (message: WebhookMessage) => {
+      addMessage(message);
+      setFreshId(message.id);
+      clearTimeout(freshTimer.current);
+      freshTimer.current = setTimeout(() => setFreshId(null), 1700);
+      notify({
+        title: "New request",
+        subtitle: `${message.method} ${requestPath(message)}${queryString(message.queryParams)}`,
+        caption: `Received ${formatTime(message.time)}`,
+        mono: true,
+      });
+    },
+    [addMessage],
+  );
+
+  const handleReconnect = useCallback(() => {
+    notify({ kind: "success", title: "Reconnected", subtitle: `Listening on ${webhookId.slice(0, 8)}`, mono: true });
   }, [webhookId]);
 
-  const handleCopyToClipboard = () => {
-    navigator.clipboard.writeText(
-      `${import.meta.env.VITE_SERVER_URL}/${generatedWebhookId}`
-    );
+  const { status, retryIn, retryNow } = useWebSocket({
+    webhookId,
+    onMessage: handleMessage,
+    onReconnect: handleReconnect,
+  });
 
-    toast("Copied to clipboard", {
-      description: `${import.meta.env.VITE_SERVER_URL}/${generatedWebhookId}`,
-      style: {
-        background: "#181818",
-      },
-    });
+  const unreadCount = messages.filter((m) => unread.has(m.id)).length;
+  useTabIndicator(unreadCount, status);
+
+  const switchWebhook = (id: string) => {
+    clearMessages();
+    setWebhookId(id);
+    navigate(`/${id}/`);
+    setConfirm(null);
   };
 
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const [customId, setCustomId] = useState("");
-
-  const handleSetCustomWebhookId = () => {
-    const trimmed = customId.trim();
-    if (!trimmed) return;
-    setGeneratedWebhookId(trimmed);
-    localStorage.setItem("messages", JSON.stringify([]));
-    setMessages([]);
-    navigate(`/${trimmed}/`);
-    setIsEditOpen(false);
+  const deleteMessage = (id: string) => {
+    removeMessage(id);
+    if (id === selected?.id) navigate(`/${webhookId}/`);
   };
 
-  const handleGenerateNewWebhookId = () => {
-    const newId = crypto.randomUUID();
-    setGeneratedWebhookId(newId);
-    localStorage.setItem("messages", JSON.stringify([]));
-    setMessages([]);
-    navigate(`/${newId}/`);
+  const openResponses = (target: EndpointRef | null = null) => {
+    setResponsesTarget(target);
+    setResponsesOpen(true);
   };
 
   return (
-    <div className="bg-primary text-foreground">
-      <nav className="bg-navBg min-h-[6rem] flex items-center gap-10 justify-between px-8">
-        <img src={logo} className="object-contain max-h-[3rem] px-4" />
-        <div className="flex gap-2 items-center">
-          <span>Your hook:</span>
-          <span
-            className="bg-primary px-3 py-2 rounded-sm flex items-center gap-2 hover:bg-[#454b53] cursor-pointer transition-colors duration-150"
-            onClick={handleCopyToClipboard}
-          >
-            {import.meta.env.VITE_SERVER_URL}/{generatedWebhookId}
-            <FaRegCopy />
-          </span>
-          <Dialog
-            open={isEditOpen}
-            onOpenChange={(open) => {
-              setIsEditOpen(open);
-              if (open) setCustomId(generatedWebhookId || "");
-            }}
-          >
-            <DialogTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-              >
-                <MdModeEdit />
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
-              <DialogHeader>
-                <DialogTitle>Set custom webhook</DialogTitle>
-                <DialogDescription>
-                  Set a custom path for your webhook URL. This will clear
-                  existing messages.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex items-center gap-0">
-                <span className="bg-secondary px-3 py-2 rounded-l-md text-sm text-muted-foreground whitespace-nowrap border border-r-0 border-input">
-                  {import.meta.env.VITE_SERVER_URL}/
-                </span>
-                <Input
-                  className="rounded-l-none"
-                  value={customId}
-                  onChange={(e) => setCustomId(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSetCustomWebhookId();
-                  }}
-                  placeholder="my-webhook"
-                  autoFocus
-                />
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setIsEditOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleSetCustomWebhookId}
-                  disabled={!customId.trim()}
-                >
-                  Save
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="outline" className="flex items-center">
-                Generate new webhook <GiPerspectiveDiceSixFacesRandom />
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This action cannot be undone. This will permanently delete
-                  your saved messages.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleGenerateNewWebhookId}>
-                  Continue
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-          <CustomResponsesDialog />
-        </div>
-      </nav>
+    <TooltipProvider delayDuration={350} skipDelayDuration={300}>
+      <div className="flex h-full flex-col overflow-hidden">
+        <AppHeader onNewUrl={() => setConfirm("newUrl")} onOpenResponses={() => openResponses()} />
+        <UrlBar
+          webhookId={webhookId}
+          status={status}
+          retryIn={retryIn}
+          onEdit={() => {
+            setCustomPath(webhookId);
+            setConfirm("editPath");
+          }}
+        />
+        {status === "disconnected" && <ConnectionNotice retryIn={retryIn} onRetry={retryNow} />}
 
-      <Dashboard>
-        {messages.length === 0 && (
-          <>
-            <div className="absolute top-0 left-0 bg-primary z-[10] ">
-              <div className="opacity-50 flex justify-center items-center w-[100vw]">
-                <Lottie
-                  width="60vw"
-                  height={"94vh"}
-                  options={{
-                    loop: true,
-                    autoplay: true,
-                    animationData: animationData,
-                    rendererSettings: { preserveAspectRatio: "xMidYMid slice" },
-                  }}
-                  isClickToPauseDisabled
-                />
-              </div>
-            </div>
-          </>
+        {messages.length === 0 || !selected ? (
+          <EmptyState webhookId={webhookId} onOpenResponses={() => openResponses()} />
+        ) : (
+          <ResizableSplit
+            left={
+              <RequestList
+                messages={messages}
+                selectedId={selected.id}
+                unread={unread}
+                freshId={freshId}
+                dimmed={status === "disconnected"}
+                onSelect={(id) => navigate(`/${webhookId}/${id}`)}
+                onDelete={deleteMessage}
+                onClearAll={() => setConfirm("clear")}
+                onMarkAllRead={markAllRead}
+              />
+            }
+            right={
+              <RequestDetails
+                message={selected}
+                webhookId={webhookId}
+                onEditResponse={(method, endpoint) => openResponses({ method, endpoint })}
+              />
+            }
+          />
         )}
-      </Dashboard>
+      </div>
+
+      <Modal
+        open={confirm === "clear"}
+        onOpenChange={(o) => !o && setConfirm(null)}
+        label="Requests"
+        title="Clear all requests?"
+        description={`This permanently deletes ${messages.length} saved requests from this browser. This cannot be undone.`}
+        primary={{
+          label: "Clear all",
+          kind: "danger",
+          onClick: () => {
+            clearMessages();
+            navigate(`/${webhookId}/`);
+            setConfirm(null);
+          },
+        }}
+      />
+
+      <Modal
+        open={confirm === "newUrl"}
+        onOpenChange={(o) => !o && setConfirm(null)}
+        label="Webhook URL"
+        title="Generate a new URL?"
+        description="You get a new webhook address. Requests saved for the current one are deleted."
+        primary={{ label: "Generate", onClick: () => switchWebhook(crypto.randomUUID()) }}
+      />
+
+      <Modal
+        open={confirm === "editPath"}
+        onOpenChange={(o) => !o && setConfirm(null)}
+        label="Webhook URL"
+        title="Set a custom path"
+        description="Saving a new path clears the current requests."
+        primary={{
+          label: "Save",
+          disabled: !customPath.trim(),
+          onClick: () => customPath.trim() && switchWebhook(customPath.trim()),
+        }}
+      >
+        <label className="flex flex-col gap-2">
+          <span className="label-01">Webhook path</span>
+          <span className="field flex items-center px-0 font-mono focus-within:outline focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-white">
+            <span className="whitespace-nowrap pl-4 text-text-helper">{SERVER_URL}/</span>
+            <input
+              autoFocus
+              value={customPath}
+              onChange={(e) => setCustomPath(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && customPath.trim()) switchWebhook(customPath.trim());
+              }}
+              placeholder="my-webhook"
+              className="h-full min-w-0 flex-1 border-0 bg-transparent pr-4 text-text-primary outline-none placeholder:text-text-placeholder"
+            />
+          </span>
+        </label>
+      </Modal>
+
+      <CustomResponsesDialog
+        open={responsesOpen}
+        onOpenChange={setResponsesOpen}
+        webhookId={webhookId}
+        initial={responsesTarget}
+      />
+
       <Toaster />
-    </div>
+    </TooltipProvider>
   );
 }
 
