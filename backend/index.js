@@ -152,11 +152,9 @@ app.post("/set-response/:webhookId/:method*", (req, res) => {
 
     const statusCode = Number(response.statusCode);
     if (!Number.isInteger(statusCode) || statusCode < 100 || statusCode > 599) {
-      return res
-        .status(400)
-        .json({
-          error: "Invalid status code. Must be an integer between 100 and 599.",
-        });
+      return res.status(400).json({
+        error: "Invalid status code. Must be an integer between 100 and 599.",
+      });
     }
 
     const customResponse = {
@@ -308,7 +306,12 @@ app.all("/:webhookId*", upload.any(), function (req, res, next) {
 
     // What we answered with; filled in below and sent to the inspector together
     // with the request once the response has been written.
-    const responseInfo = { custom: false, echo: true, body: null, bodyFormat: "json" };
+    const responseInfo = {
+      custom: false,
+      echo: true,
+      body: null,
+      bodyFormat: "json",
+    };
 
     res.on("finish", () => {
       payload.response = {
