@@ -53,8 +53,6 @@ const wss = new WebSocketServer({ noServer: true });
 // same webhook, and a reconnecting tab briefly has two sockets).
 const clients = new Map();
 
-const customResponses = {};
-
 const addClient = (webhookId, ws) => {
   if (!clients.has(webhookId)) clients.set(webhookId, new Set());
   clients.get(webhookId).add(ws);
@@ -128,106 +126,149 @@ server.on("upgrade", (request, socket, head) => {
   });
 });
 
+// ───────── Custom responses ─────────
+// Kept in memory only: a restart clears them, and the inspector (which keeps
+// its own copy in the browser) can push them back with POST /responses/:id.
+// webhookId -> Map("METHOD /path/{param}" -> rule)
+const customResponses = new Map();
+
+const isParam = (segment) => /^\{[^/{}]+\}$/.test(segment);
+const splitPath = (path) => path.split("/").filter(Boolean);
+const normalisePath = (path) => "/" + splitPath(path || "/").join("/");
+
+const CONTENT_TYPES = {
+  json: "application/json",
+  xml: "application/xml",
+  text: "text/plain",
+  html: "text/html",
+  yaml: "application/yaml",
+  "form-urlencoded": "application/x-www-form-urlencoded",
+};
+
+function toRule(method, path, response) {
+  if (!response || typeof response !== "object") {
+    throw new Error("Invalid custom response format");
+  }
+  if (typeof method !== "string" || !/^[a-z]+$/i.test(method)) {
+    throw new Error("Invalid method");
+  }
+  const statusCode = Number(response.statusCode);
+  if (!Number.isInteger(statusCode) || statusCode < 100 || statusCode > 599) {
+    throw new Error("Invalid status code. Must be an integer between 100 and 599.");
+  }
+  const endpoint = normalisePath(path);
+  const segments = splitPath(endpoint);
+  return {
+    method: method.toUpperCase(),
+    endpoint,
+    statusCode,
+    headers: response.headers && typeof response.headers === "object" ? response.headers : {},
+    body: response.body ?? "",
+    bodyFormat: response.bodyFormat || "json",
+    segments,
+    // Literal segments win over parameters: /customers/search before /customers/{id}.
+    specificity: segments.filter((s) => !isParam(s)).length,
+  };
+}
+
+const ruleKey = (rule) => `${rule.method} ${rule.endpoint}`;
+
+function setRule(webhookId, rule) {
+  if (!customResponses.has(webhookId)) customResponses.set(webhookId, new Map());
+  customResponses.get(webhookId).set(ruleKey(rule), rule);
+}
+
+function findRule(webhookId, method, path) {
+  const rules = customResponses.get(webhookId);
+  if (!rules) return null;
+  let requestSegments;
+  try {
+    requestSegments = splitPath(path).map(decodeURIComponent);
+  } catch {
+    requestSegments = splitPath(path);
+  }
+  let best = null;
+  for (const rule of rules.values()) {
+    if (rule.method !== method || rule.segments.length !== requestSegments.length) continue;
+    const ok = rule.segments.every((s, i) => isParam(s) || s === requestSegments[i]);
+    if (ok && (!best || rule.specificity > best.specificity)) best = rule;
+  }
+  return best;
+}
+
+const summarise = (rule) => ({
+  method: rule.method,
+  endpoint: rule.endpoint,
+  statusCode: rule.statusCode,
+});
+
 app.post("/set-response/:webhookId/:method*", (req, res) => {
   try {
-    const { webhookId, method } = req.params;
-    const response = req.body;
-
-    console.log("Received set-response request:", {
-      webhookId,
-      method,
-      fullPath: req.params[0].length === 0 ? "/" : req.params[0],
-      body: response,
-    });
-
-    if (
-      !response ||
-      response.body === undefined ||
-      !response.statusCode ||
-      !response.headers
-    ) {
-      console.log("Invalid request format:", { response });
-      return res.status(400).json({ error: "Invalid custom response format" });
-    }
-
-    const statusCode = Number(response.statusCode);
-    if (!Number.isInteger(statusCode) || statusCode < 100 || statusCode > 599) {
-      return res
-        .status(400)
-        .json({
-          error: "Invalid status code. Must be an integer between 100 and 599.",
-        });
-    }
-
-    const customResponse = {
-      body: response.body,
-      statusCode,
-      headers: response.headers,
-      bodyFormat: response.bodyFormat || "json",
-    };
-
-    const fullPath = req.params[0].length === 0 ? "/" : req.params[0];
-
-    if (!customResponses[webhookId]) {
-      customResponses[webhookId] = {};
-    }
-    if (!customResponses[webhookId][fullPath]) {
-      customResponses[webhookId][fullPath] = {};
-    }
-
-    customResponses[webhookId][fullPath][method] = customResponse;
-
-    console.log(
-      `Custom response set for ${method} ${fullPath} (format: ${customResponse.bodyFormat})`,
-    );
-    console.log("Stored custom response body:", customResponse.body);
-
-    res.json({
-      message: "Custom response set successfully",
-      path: fullPath,
-    });
+    const rule = toRule(req.params.method, req.params[0], req.body);
+    setRule(req.params.webhookId, rule);
+    console.log(`Custom response set: ${req.params.webhookId} ${ruleKey(rule)} -> ${rule.statusCode}`);
+    res.json({ message: "Custom response set successfully", path: rule.endpoint });
   } catch (err) {
-    console.error(err);
-    res.status(400).json({ error: "An error occurred" });
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Active custom responses, so the inspector can tell whether they survived a restart.
+app.get("/responses/:webhookId", (req, res) => {
+  const rules = customResponses.get(req.params.webhookId);
+  res.json({ responses: rules ? Array.from(rules.values(), summarise) : [] });
+});
+
+function parseRules(list) {
+  if (!Array.isArray(list)) throw new Error("Expected { responses: [...] }");
+  return list.map((item, i) => {
+    try {
+      return toRule(item?.method, item?.endpoint, item);
+    } catch (err) {
+      throw new Error(`responses[${i}]: ${err.message}`);
+    }
+  });
+}
+
+// Add or update many custom responses at once (OpenAPI import, restore after a restart).
+app.post("/responses/:webhookId", (req, res) => {
+  try {
+    const rules = parseRules(req.body?.responses);
+    rules.forEach((rule) => setRule(req.params.webhookId, rule));
+    console.log(`Custom responses set: ${req.params.webhookId} (+${rules.length})`);
+    res.json({ message: "Custom responses set", count: rules.length });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Replace every custom response of a webhook.
+app.put("/responses/:webhookId", (req, res) => {
+  try {
+    const rules = parseRules(req.body?.responses);
+    customResponses.delete(req.params.webhookId);
+    rules.forEach((rule) => setRule(req.params.webhookId, rule));
+    console.log(`Custom responses replaced: ${req.params.webhookId} (${rules.length})`);
+    res.json({ message: "Custom responses set", count: rules.length });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 
 app.delete("/delete-response/:webhookId/:method*", (req, res) => {
-  try {
-    const { webhookId, method } = req.params;
-    const fullPath = req.params[0].length === 0 ? "/" : req.params[0];
-
-    if (customResponses[webhookId]?.[fullPath]?.[method]) {
-      delete customResponses[webhookId][fullPath][method];
-      if (Object.keys(customResponses[webhookId][fullPath]).length === 0) {
-        delete customResponses[webhookId][fullPath];
-      }
-      if (Object.keys(customResponses[webhookId]).length === 0) {
-        delete customResponses[webhookId];
-      }
-      console.log(`Deleted custom response for ${method} ${fullPath}`);
-      return res.json({ message: "Custom response deleted", path: fullPath });
-    }
-
+  const { webhookId, method } = req.params;
+  const rules = customResponses.get(webhookId);
+  const key = `${method.toUpperCase()} ${normalisePath(req.params[0])}`;
+  if (!rules?.delete(key)) {
     return res.status(404).json({ error: "Custom response not found" });
-  } catch (err) {
-    console.error(err);
-    res.status(400).json({ error: "An error occurred" });
   }
+  if (rules.size === 0) customResponses.delete(webhookId);
+  res.json({ message: "Custom response deleted", path: normalisePath(req.params[0]) });
 });
 
 app.delete("/delete-responses/:webhookId", (req, res) => {
-  try {
-    const { webhookId } = req.params;
-    if (customResponses[webhookId]) {
-      delete customResponses[webhookId];
-      console.log(`Deleted all custom responses for ${webhookId}`);
-    }
-    return res.json({ message: "All custom responses deleted" });
-  } catch (err) {
-    console.error(err);
-    res.status(400).json({ error: "An error occurred" });
-  }
+  customResponses.delete(req.params.webhookId);
+  res.json({ message: "All custom responses deleted" });
 });
 
 const toHeaderCase = (name) =>
@@ -326,76 +367,31 @@ app.all("/:webhookId*", upload.any(), function (req, res, next) {
       broadcast(webhookId, payload);
     });
 
-    let fullPath = path;
+    const rule = findRule(webhookId, method, path || "/");
 
-    if (!fullPath.startsWith("/")) {
-      fullPath = "/" + fullPath;
-    }
+    if (rule) {
+      res.set(rule.headers);
 
-    console.log(
-      `Looking for custom response: ${webhookId} -> ${fullPath} -> ${method}`,
-    );
-    console.log("Available webhookIds:", Object.keys(customResponses));
-    if (customResponses[webhookId]) {
-      console.log(
-        "Available paths for webhookId:",
-        Object.keys(customResponses[webhookId]),
+      const bodyFormat = rule.bodyFormat;
+      const hasContentType = Object.keys(rule.headers).some(
+        (h) => h.toLowerCase() === "content-type",
       );
-      if (customResponses[webhookId][fullPath]) {
-        console.log(
-          "Available methods for path:",
-          Object.keys(customResponses[webhookId][fullPath]),
-        );
+      if (bodyFormat !== "raw" && CONTENT_TYPES[bodyFormat] && !hasContentType) {
+        res.set("Content-Type", CONTENT_TYPES[bodyFormat]);
       }
-    }
-
-    if (customResponses[webhookId]?.[fullPath]?.[method]) {
-      const customResponse = customResponses[webhookId][fullPath][method];
-
-      console.log(
-        `FOUND custom response for ${method} ${fullPath} (format: ${
-          customResponse.bodyFormat || "json"
-        })`,
-      );
-      console.log("Sending custom body:", customResponse.body);
-
-      res.set(customResponse.headers);
-
-      const contentTypeMap = {
-        json: "application/json",
-        xml: "application/xml",
-        text: "text/plain",
-        html: "text/html",
-        yaml: "application/yaml",
-        "form-urlencoded": "application/x-www-form-urlencoded",
-      };
-
-      const bodyFormat = customResponse.bodyFormat || "json";
-
-      if (
-        bodyFormat !== "raw" &&
-        contentTypeMap[bodyFormat] &&
-        !customResponse.headers["Content-Type"] &&
-        !customResponse.headers["content-type"]
-      ) {
-        res.set("Content-Type", contentTypeMap[bodyFormat]);
-      }
-
-      console.log(`Sending ${bodyFormat} response`);
 
       const responseBody =
-        bodyFormat === "json" && typeof customResponse.body === "object"
-          ? JSON.stringify(customResponse.body)
-          : customResponse.body;
+        bodyFormat === "json" && typeof rule.body === "object"
+          ? JSON.stringify(rule.body)
+          : rule.body;
 
       responseInfo.custom = true;
       responseInfo.echo = false;
-      responseInfo.body = customResponse.body;
+      responseInfo.body = rule.body;
       responseInfo.bodyFormat = bodyFormat;
+      responseInfo.endpoint = rule.endpoint;
 
-      return res.status(customResponse.statusCode).send(responseBody);
-    } else {
-      console.log(`NO custom response found for ${method} ${fullPath}`);
+      return res.status(rule.statusCode).send(responseBody);
     }
 
     res.json({ status: "Webhook received", payload });

@@ -242,3 +242,10 @@ export function bytesToBase64(bytes: number[]) {
   }
   return btoa(binary);
 }
+
+/** Lines for a response body of any format (JSON gets syntax colours). */
+export function bodyLines(body: unknown, format: string) {
+  if (format === "json" && typeof body !== "string") return jsonLines(body);
+  const text = typeof body === "string" ? body : JSON.stringify(body, null, 2);
+  return text.split("\n").map((line) => [{ text: line, color: "#f4f4f4" }]);
+}

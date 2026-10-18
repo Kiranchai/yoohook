@@ -1,9 +1,20 @@
 import { forwardRef, useImperativeHandle, useState } from "react";
-import { HTTP_METHODS, SERVER_URL } from "@/lib/http";
+import { HTTP_METHODS } from "@/lib/http";
 import { notify } from "@/lib/notify";
 import { Icon } from "@/components/icons";
 import CodeEditor from "./CodeEditor";
-import { BodyFormat, SavedResponse, loadResponses, sameEndpoint, saveResponses } from "./storage";
+import {
+  BodyFormat,
+  SavedResponse,
+  activeVariant,
+  deleteResponse,
+  loadResponses,
+  normalisePath,
+  pushResponse,
+  sameEndpoint,
+  saveResponses,
+  specBody,
+} from "./storage";
 
 const FORMATS: { key: BodyFormat; label: string; language: string }[] = [
   { key: "json", label: "JSON", language: "json" },
@@ -123,6 +134,19 @@ function initialState(saved: SavedResponse | undefined) {
   };
 }
 
+const stable = (v: unknown) => JSON.stringify(v ?? "");
+
+/** Whether an imported response was edited away from what the specification says. */
+function differsFromSpec(r: SavedResponse) {
+  const variant = activeVariant(r);
+  if (!variant) return true;
+  return (
+    stable(r.body) !== stable(specBody(r)) ||
+    stable(r.headers) !== stable(variant.headers) ||
+    r.bodyFormat !== variant.bodyFormat
+  );
+}
+
 export type EditorTarget = { method: string; endpoint: string; isNew: boolean };
 
 export interface ResponseEditorHandle {
@@ -151,6 +175,7 @@ const ResponseEditor = forwardRef<
   const [bodyError, setBodyError] = useState(validateBody(init.bodyFormat, init.body));
   const [error, setError] = useState("");
 
+  const isSpec = saved?.source === "openapi";
   const format = FORMATS.find((f) => f.key === bodyFormat) ?? FORMATS[0];
   const formatIndex = FORMATS.indexOf(format);
 
@@ -161,7 +186,7 @@ const ResponseEditor = forwardRef<
 
   const save = async () => {
     setError("");
-    const path = endpoint.trim() ? (endpoint.startsWith("/") ? endpoint.trim() : "/" + endpoint.trim()) : "/";
+    const path = normalisePath(endpoint.trim());
     if (headersError || bodyError) return setError("Fix the validation errors before saving.");
     if (!statusCode) return setError("Set a status code.");
     const code = Number(statusCode);
@@ -179,16 +204,18 @@ const ResponseEditor = forwardRef<
 
     onBusyChange(true);
     try {
-      const res = await fetch(`${SERVER_URL}/set-response/${webhookId}/${method}${path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ statusCode, headers: parsedHeaders, body: parsedBody, bodyFormat }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) return setError(data.error ?? `Server responded ${res.status}.`);
-
-      const response: SavedResponse = { method, endpoint: path, statusCode, headers: parsedHeaders, body: parsedBody, bodyFormat };
-      saveResponses([...loadResponses().filter((r) => !sameEndpoint(r, response)), response]);
+      const response: SavedResponse = {
+        ...(isSpec ? saved : {}),
+        method,
+        endpoint: path,
+        statusCode,
+        headers: parsedHeaders,
+        body: parsedBody,
+        bodyFormat,
+      };
+      if (isSpec && saved) response.overridden = differsFromSpec(response);
+      await pushResponse(webhookId, response);
+      saveResponses(webhookId, [...loadResponses(webhookId).filter((r) => !sameEndpoint(r, response)), response]);
       notify({ kind: "success", title: "Response saved", subtitle: `${method} ${path} → ${statusCode}`, mono: true });
       onSaved(response);
     } catch (e) {
@@ -202,17 +229,19 @@ const ResponseEditor = forwardRef<
 
   const remove = async () => {
     try {
-      await fetch(`${SERVER_URL}/delete-response/${webhookId}/${target.method}${target.endpoint}`, { method: "DELETE" });
+      await deleteResponse(webhookId, target);
     } catch {
       /* the local copy is removed regardless */
     }
-    saveResponses(loadResponses().filter((r) => !sameEndpoint(r, target)));
+    saveResponses(webhookId, loadResponses(webhookId).filter((r) => !sameEndpoint(r, target)));
     notify({ title: "Custom response removed", subtitle: `${target.method} ${target.endpoint}`, mono: true });
     onRemoved();
   };
 
   return (
-    <div className="enter-up flex flex-col gap-6 pb-8 pl-6 pr-4 pt-6">
+    <div className={isSpec ? "flex flex-col gap-6" : "enter-up flex flex-col gap-6 pb-8 pl-6 pr-4 pt-6"}>
+      {!isSpec && (
+      <>
       <div className="grid grid-cols-[128px_minmax(0,1fr)_160px] gap-4">
         <label className="flex flex-col gap-2">
           <span className="label-01">Method</span>
@@ -267,6 +296,8 @@ const ResponseEditor = forwardRef<
           );
         })}
       </div>
+      </>
+      )}
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
