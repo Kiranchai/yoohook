@@ -349,7 +349,12 @@ app.all("/:webhookId*", upload.any(), function (req, res, next) {
 
     // What we answered with; filled in below and sent to the inspector together
     // with the request once the response has been written.
-    const responseInfo = { custom: false, echo: true, body: null, bodyFormat: "json" };
+    const responseInfo = {
+      custom: false,
+      echo: true,
+      body: null,
+      bodyFormat: "json",
+    };
 
     res.on("finish", () => {
       payload.response = {
