@@ -354,3 +354,31 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* OpenAPI import */
+@keyframes yh-step-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.step-in {
+  animation: yh-step-in 240ms cubic-bezier(0, 0, 0.38, 0.9) both;
+}
+@keyframes yh-check-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.check-in {
+  animation: yh-check-in 400ms cubic-bezier(0.4, 0.14, 0.3, 1) both;
+}

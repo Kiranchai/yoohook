@@ -51,7 +51,13 @@ All backend state is ephemeral (in-memory); a restart clears everything.
 External HTTP request → backend parses payload → sends via WebSocket → frontend `useWebSocket` hook receives → updates context + localStorage → UI renders message
 
 ### Custom Responses
-Browser POSTs config to `/set-response/{webhookId}/{method}{path}` → backend stores in memory. Subsequent matching requests return the custom response instead of the default. Config also saved to `localStorage` for form repopulation.
+Kept in backend memory per webhook (`customResponses` Map, key `"METHOD /path"`); a restart clears them. Paths may contain `{param}` segments that match any one segment; literal segments win (`/customers/search` before `/customers/{id}`).
+- `POST /set-response/{webhookId}/{method}{path}` — set one
+- `GET /responses/{webhookId}` — list active (method, endpoint, statusCode)
+- `POST /responses/{webhookId}` — add/update many; `PUT` replaces all
+- `DELETE /delete-response/{webhookId}/{method}{path}`, `DELETE /delete-responses/{webhookId}`
+
+The browser keeps its own copy in `localStorage` (`customResponses:{webhookId}`). When the server lost them, the Custom responses dialog offers "Restore all to server". OpenAPI import (`frontend/src/lib/openapi.ts`) parses the spec in the browser and stores every response variant with each entry so the status can be switched later.
 
 ## Key Conventions
 - Backend uses ESM (`"type": "module"`)
