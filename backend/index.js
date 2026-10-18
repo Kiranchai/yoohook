@@ -385,10 +385,9 @@ app.all("/:webhookId*", upload.any(), function (req, res, next) {
         res.set("Content-Type", CONTENT_TYPES[bodyFormat]);
       }
 
+      // Always send text: res.send(42) would be taken as a status code.
       const responseBody =
-        bodyFormat === "json" && typeof rule.body === "object"
-          ? JSON.stringify(rule.body)
-          : rule.body;
+        typeof rule.body === "string" ? rule.body : JSON.stringify(rule.body);
 
       responseInfo.custom = true;
       responseInfo.echo = false;

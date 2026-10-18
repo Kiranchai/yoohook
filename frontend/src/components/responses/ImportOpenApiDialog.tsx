@@ -13,11 +13,13 @@ import {
   paramText,
   parseSpec,
   pathParts,
+  plural,
+  versionLabel,
 } from "@/lib/openapi";
 import { notify } from "@/lib/notify";
 import { Icon } from "@/components/icons";
 import { CodeBlock, Toggle } from "@/components/common";
-import { SavedResponse, applyVariant, endpointKey, loadResponses, normalisePath, pushResponses, saveResponses } from "./storage";
+import { SavedResponse, applyVariant, endpointKey, loadResponses, normalisePath, pushResponses, saveResponses, warnNotStored } from "./storage";
 
 const MAX_FILE = 10 * 1024 * 1024;
 const STEPS = ["Source", "Choose operations", "Done"];
@@ -172,9 +174,9 @@ export default function ImportOpenApiDialog({
       const parsed = parseSpec(await file.text());
       setSpec(parsed);
       setPrefixOn(true);
-      setSelected(new Set(parsed.operations.map((o) => o.id)));
-      setChoices(Object.fromEntries(parsed.operations.map((o) => [o.id, { status: defaultVariant(o).statusCode }])));
-      setFocus(parsed.operations[0].id);
+      setSelected(new Set(parsed.operations.map((o) => o.key)));
+      setChoices(Object.fromEntries(parsed.operations.map((o) => [o.key, { status: defaultVariant(o).statusCode }])));
+      setFocus(parsed.operations[0].key);
       setFilter("");
       setStep(1);
     } catch (e) {
@@ -196,11 +198,11 @@ export default function ImportOpenApiDialog({
     ? ops.filter((o) => [o.path, o.id, o.tag, o.summary, o.method].some((s) => s.toLowerCase().includes(q)))
     : ops;
   const groups = (spec?.tags ?? []).map((tag) => ({ tag, ops: visible.filter((o) => o.tag === tag) })).filter((g) => g.ops.length);
-  const importable = ops.filter((o) => selected.has(o.id) && !hasManual(o));
-  const allSelected = visible.length > 0 && visible.every((o) => selected.has(o.id));
+  const importable = ops.filter((o) => selected.has(o.key) && !hasManual(o));
+  const allSelected = visible.length > 0 && visible.every((o) => selected.has(o.key));
 
-  const variantOf = (op: SpecOperation) => op.responses.find((r) => r.statusCode === choices[op.id]?.status) ?? defaultVariant(op);
-  const focused = ops.find((o) => o.id === focus) ?? ops[0];
+  const variantOf = (op: SpecOperation) => op.responses.find((r) => r.statusCode === choices[op.key]?.status) ?? defaultVariant(op);
+  const focused = ops.find((o) => o.key === focus) ?? ops[0];
 
   const toggle = (id: string) =>
     setSelected((s) => {
@@ -213,13 +215,13 @@ export default function ImportOpenApiDialog({
   const toggleAll = () =>
     setSelected((s) => {
       const next = new Set(s);
-      visible.forEach((o) => (allSelected ? next.delete(o.id) : next.add(o.id)));
+      visible.forEach((o) => (allSelected ? next.delete(o.key) : next.add(o.key)));
       return next;
     });
 
   const choose = (op: SpecOperation, choice: Partial<Choice>) => {
-    setChoices((c) => ({ ...c, [op.id]: { ...c[op.id], ...choice } }));
-    setFocus(op.id);
+    setChoices((c) => ({ ...c, [op.key]: { ...c[op.key], ...choice } }));
+    setFocus(op.key);
   };
 
   const runImport = async () => {
@@ -243,13 +245,14 @@ export default function ImportOpenApiDialog({
           variants: op.responses,
         },
         variantOf(op),
-        choices[op.id]?.example,
+        choices[op.key]?.example,
       ),
     );
     try {
       await pushResponses(webhookId, imported);
       const keys = new Set(imported.map(endpointKey));
-      saveResponses(webhookId, [...loadResponses(webhookId).filter((r) => !keys.has(endpointKey(r))), ...imported]);
+      const stored = saveResponses(webhookId, [...loadResponses(webhookId).filter((r) => !keys.has(endpointKey(r))), ...imported]);
+      if (!stored) warnNotStored();
       setResult(imported);
       setStep(2);
       onImported();
@@ -274,7 +277,11 @@ export default function ImportOpenApiDialog({
         ? `${selected.size} of ${ops.length} selected · existing manual responses are kept`
         : "";
 
-  const back = () => (step === 1 ? setStep(0) : onOpenChange(false));
+  const back = () => {
+    setError("");
+    if (step === 1) setStep(0);
+    else onOpenChange(false);
+  };
   const next = () => {
     if (step === 0 && spec) setStep(1);
     else if (step === 1) runImport();
@@ -380,7 +387,7 @@ export default function ImportOpenApiDialog({
                   <span className="flex flex-col gap-[2px]">
                     <span className="font-semibold">{spec.title}</span>
                     <span className="font-mono text-label text-text-helper">
-                      {[spec.version && `v${spec.version}`, spec.format, `${ops.length} operations`, `${spec.tags.length} tags`]
+                      {[versionLabel(spec.version), spec.format, plural(ops.length, "operation"), plural(spec.tags.length, "tag")]
                         .filter(Boolean)
                         .join(" · ")}
                     </span>
@@ -418,13 +425,13 @@ export default function ImportOpenApiDialog({
                             <span className="font-mono text-text-secondary">{g.ops.length}</span>
                           </div>
                           {g.ops.map((op) => {
-                            const on = selected.has(op.id);
+                            const on = selected.has(op.key);
                             const variant = variantOf(op);
                             const src = SOURCES[variant.source];
                             const chip = methodChip(op.method);
-                            const isFocused = focused?.id === op.id;
+                            const isFocused = focused?.key === op.key;
                             return (
-                              <div key={op.id}>
+                              <div key={op.key}>
                                 <div
                                   className="relative flex items-start gap-3 border-b border-border-subtle px-4 py-3 transition-colors duration-70 hover:bg-layer-hover1"
                                   style={{
@@ -432,10 +439,10 @@ export default function ImportOpenApiDialog({
                                     boxShadow: isFocused ? "inset 3px 0 0 #4589ff" : undefined,
                                   }}
                                 >
-                                  <Checkbox checked={on} onChange={() => toggle(op.id)} label={`Import ${op.method} ${op.path}`} />
+                                  <Checkbox checked={on} onChange={() => toggle(op.key)} label={`Import ${op.method} ${op.path}`} />
                                   <button
                                     type="button"
-                                    onClick={() => setFocus(op.id)}
+                                    onClick={() => setFocus(op.key)}
                                     className="flex min-w-0 flex-1 flex-col gap-[6px] bg-transparent p-0 text-left transition-opacity duration-110"
                                     style={{ opacity: on ? 1 : 0.5 }}
                                   >
@@ -483,7 +490,7 @@ export default function ImportOpenApiDialog({
                     </div>
                   </div>
 
-                  {focused && <Preview key={focused.id} op={focused} prefix={prefix} variant={variantOf(focused)} example={choices[focused.id]?.example} onExample={(example) => choose(focused, { example })} />}
+                  {focused && <Preview key={focused.key} op={focused} prefix={prefix} variant={variantOf(focused)} example={choices[focused.key]?.example} onExample={(example) => choose(focused, { example })} />}
                 </div>
               </div>
             )}

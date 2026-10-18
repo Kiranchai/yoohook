@@ -16,6 +16,8 @@ export interface SpecVariant {
 }
 
 export interface SpecOperation {
+  /** "METHOD /path", unique within the spec (operationIds sometimes repeat). */
+  key: string;
   /** operationId, or METHOD + path when the spec has none. */
   id: string;
   method: string;
@@ -146,6 +148,8 @@ export function parseSpec(text: string): ParsedSpec {
     for (const [name, h] of Object.entries(isObj(raw) ? raw : {})) {
       const header = deref(h) as Obj;
       if (!isObj(header)) continue;
+      // Only headers the spec gives a value or a type for; a bare description says nothing.
+      if (header.example === undefined && !header.schema && !header.type) continue;
       const value = header.example ?? (header.schema ? sample(header.schema) : sample(header));
       if (value !== null && value !== undefined) out[name] = typeof value === "string" ? value : JSON.stringify(value);
     }
@@ -161,8 +165,10 @@ export function parseSpec(text: string): ParsedSpec {
     if (!contentType) return { statusCode, source: "empty", headers, bodyFormat: "raw" };
 
     const media = deref(content[contentType]) as Obj;
-    const bodyFormat = formatOf(contentType);
-    if (!/^application\/json$/.test(contentType)) headers["Content-Type"] = contentType;
+    // Generators like springdoc write "*/*" for what is really JSON.
+    const wildcard = /^\*\/\*/.test(contentType);
+    const bodyFormat = wildcard ? "json" : formatOf(contentType);
+    if (!wildcard && !/^application\/json$/.test(contentType)) headers["Content-Type"] = contentType;
 
     if (isObj(media) && media.example !== undefined) return { statusCode, source: "example", body: media.example, headers, bodyFormat };
     if (isObj(media) && isObj(media.examples) && Object.keys(media.examples).length) {
@@ -204,6 +210,7 @@ export function parseSpec(text: string): ParsedSpec {
       const responses = variantsOf(op);
       if (!responses.length) continue;
       operations.push({
+        key: `${method.toUpperCase()} ${path}`,
         id: typeof op.operationId === "string" ? op.operationId : `${method.toUpperCase()} ${path}`,
         method: method.toUpperCase(),
         path: "/" + path.replace(/^\/+/, ""),
@@ -335,3 +342,8 @@ export const paramText = (path: string) => {
     ? `{${params.join("}, {")}} matches any single path segment, e.g. ${path.replace(/\{[^/{}]+\}/g, "abc123")}.`
     : "None. The path is matched exactly.";
 };
+
+/** "2.4.1" -> "v2.4.1"; versions that already start with v are left alone. */
+export const versionLabel = (version: string) => (!version ? "" : /^v/i.test(version) ? version : `v${version}`);
+
+export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;

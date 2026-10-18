@@ -1,4 +1,5 @@
 import { SERVER_URL } from "@/lib/http";
+import { notify } from "@/lib/notify";
 import type { SpecVariant } from "@/lib/openapi";
 
 export type BodyFormat = "json" | "xml" | "text" | "html" | "yaml" | "form-urlencoded" | "raw";
@@ -50,19 +51,31 @@ export function loadResponses(webhookId: string): SavedResponse[] {
   }
 }
 
+/** Returns false when the browser refused to store them (quota full, storage blocked). */
 export function saveResponses(webhookId: string, responses: SavedResponse[]) {
   try {
     if (responses.length) localStorage.setItem(keyFor(webhookId), JSON.stringify(responses));
     else localStorage.removeItem(keyFor(webhookId));
+    return true;
   } catch {
-    /* storage full or blocked: the server copy still works until a restart */
+    return false;
   }
 }
+
+export const warnNotStored = () =>
+  notify({
+    kind: "warning",
+    title: "Not saved in this browser",
+    subtitle: "Browser storage is full. The server answers with the responses, but they can't be restored after a restart.",
+  });
 
 export const sameEndpoint = (a: EndpointKey, b: EndpointKey) =>
   a.method === b.method && normalisePath(a.endpoint) === normalisePath(b.endpoint);
 
 export const endpointKey = (e: EndpointKey) => `${e.method} ${normalisePath(e.endpoint)}`;
+
+/** "/v2/orders/{id}" -> "/v2/orders/%7Bid%7D", so "?" or "#" in a path can't cut the URL short. */
+const encodePath = (path: string) => path.split("/").map(encodeURIComponent).join("/");
 
 const toServer = (r: SavedResponse) => ({
   method: r.method,
@@ -97,7 +110,7 @@ export async function pushResponses(webhookId: string, responses: SavedResponse[
 }
 
 export async function pushResponse(webhookId: string, r: SavedResponse) {
-  await request(`${SERVER_URL}/set-response/${webhookId}/${r.method}${r.endpoint}`, {
+  await request(`${SERVER_URL}/set-response/${webhookId}/${r.method}${encodePath(r.endpoint)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(toServer(r)),
@@ -105,7 +118,7 @@ export async function pushResponse(webhookId: string, r: SavedResponse) {
 }
 
 export async function deleteResponse(webhookId: string, r: EndpointKey) {
-  await fetch(`${SERVER_URL}/delete-response/${webhookId}/${r.method}${r.endpoint}`, { method: "DELETE" });
+  await fetch(`${SERVER_URL}/delete-response/${webhookId}/${r.method}${encodePath(r.endpoint)}`, { method: "DELETE" });
 }
 
 export async function deleteAllResponses(webhookId: string) {

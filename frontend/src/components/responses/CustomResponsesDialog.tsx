@@ -2,7 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useMessages } from "@/providers/MessagesProvider";
 import { methodChip, reasonPhrase, requestPath, statusColor } from "@/lib/http";
-import { SOURCES, matchesTemplate, paramText } from "@/lib/openapi";
+import { SOURCES, matchesTemplate, paramText, plural, versionLabel } from "@/lib/openapi";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { Icon } from "@/components/icons";
@@ -23,6 +23,7 @@ import {
   pushResponses,
   sameEndpoint,
   saveResponses,
+  warnNotStored,
 } from "./storage";
 
 export type EndpointRef = { method: string; endpoint: string };
@@ -142,7 +143,8 @@ export default function CustomResponsesDialog({
   useLayoutEffect(() => {
     const el = selectedId ? rowRefs.current.get(selectedId) : undefined;
     setIndicator(el ? { top: el.offsetTop, height: el.offsetHeight } : null);
-  }, [selectedId, visibleGroups.length, saved, filter, open]);
+    // groups: rows move when requests arrive or responses change.
+  }, [selectedId, groups, filter, open]);
 
   const addDraft = () => {
     const draft = { method: "POST", endpoint: `/new-endpoint-${drafts.length + 1}` };
@@ -153,7 +155,7 @@ export default function CustomResponsesDialog({
   const persist = async (next: SavedResponse, message: { title: string; subtitle?: string }) => {
     try {
       await pushResponse(webhookId, next);
-      saveResponses(webhookId, loadResponses(webhookId).map((r) => (sameEndpoint(r, next) ? next : r)));
+      if (!saveResponses(webhookId, loadResponses(webhookId).map((r) => (sameEndpoint(r, next) ? next : r)))) warnNotStored();
       setSaved(loadResponses(webhookId));
       setRevision((n) => n + 1);
       refreshActive();
@@ -344,7 +346,7 @@ export default function CustomResponsesDialog({
                               </span>
                             </span>
                             <span className="font-mono text-label text-text-helper">
-                              {[g.spec.version && `v${g.spec.version}`, g.spec.basePath, `${g.items.length} ops`].filter(Boolean).join(" · ")}
+                              {[versionLabel(g.spec.version), g.spec.basePath, plural(g.items.length, "op")].filter(Boolean).join(" · ")}
                             </span>
                           </div>
                         ) : (

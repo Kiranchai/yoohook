@@ -14,6 +14,7 @@ import {
   sameEndpoint,
   saveResponses,
   specBody,
+  warnNotStored,
 } from "./storage";
 
 const FORMATS: { key: BodyFormat; label: string; language: string }[] = [
@@ -215,7 +216,7 @@ const ResponseEditor = forwardRef<
       };
       if (isSpec && saved) response.overridden = differsFromSpec(response);
       await pushResponse(webhookId, response);
-      saveResponses(webhookId, [...loadResponses(webhookId).filter((r) => !sameEndpoint(r, response)), response]);
+      if (!saveResponses(webhookId, [...loadResponses(webhookId).filter((r) => !sameEndpoint(r, response)), response])) warnNotStored();
       notify({ kind: "success", title: "Response saved", subtitle: `${method} ${path} → ${statusCode}`, mono: true });
       onSaved(response);
     } catch (e) {
